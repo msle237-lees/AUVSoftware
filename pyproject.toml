@@ -34,6 +34,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "pygame",
     "numpy",
     "pandas",
     "pyyaml",
