@@ -1,12 +1,13 @@
 from smbus2 import SMBus
+import threading
 import time
 
 
 class temperature:
-    def __init__(self, bus_number: int = 1, address: int = 0x60):
+    def __init__(self, bus_number: int, address: int, bus_lock: threading.Lock) -> None:
         self.bus_number = bus_number
         self.address = address
         self.bus = SMBus(bus_number)
         
-    def run(self):
-        pass # Implement temperature sensor logic here, such as reading temperature data and processing it for use in monitoring and control
+    def run(self, stop_event : threading.Event) -> None:
+        pass  # Implement arm control logic here, such as sending position commands and reading feedback

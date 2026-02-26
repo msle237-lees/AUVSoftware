@@ -5,7 +5,14 @@ from importlib import import_module
 from smbus2 import SMBus
 import threading
 import time
-from typing import Callable, Dict, Optional, Set
+from typing import Callable, Dict, Optional, Set, Protocol, runtime_checkable
+
+
+@runtime_checkable
+class Runnable(Protocol):
+    """@brief Contract for hardware modules runnable by the Controller."""
+    def run(self, stop_event: threading.Event) -> None:
+        ...
 
 
 @dataclass
@@ -72,18 +79,11 @@ class Controller:
 
         # Declarative registry: add new boards by adding one line here.
         self.devices: Dict[str, DeviceSpec] = {
-            "imu": DeviceSpec(
-                name="IMU",
-                address=0x10,
-                module_path="hardware.modules.imu",
-                class_name="imu",
-                enabled=True,
-            ),
-            "depth": DeviceSpec(
-                name="Depth Sensor",
-                address=0x20,
-                module_path="hardware.modules.depth",
-                class_name="depth",
+            "arm": DeviceSpec(
+                name="Manipulator Arm",
+                address=0x50,
+                module_path="hardware.modules.arm",
+                class_name="arm",
                 enabled=True,
             ),
             "battery": DeviceSpec(
@@ -93,11 +93,39 @@ class Controller:
                 class_name="battery",
                 enabled=True,
             ),
+            "depth": DeviceSpec(
+                name="Depth Sensor",
+                address=0x20,
+                module_path="hardware.modules.depth",
+                class_name="depth",
+                enabled=True,
+            ),
             "escs": DeviceSpec(
                 name="Motor Controller",
                 address=0x40,
                 module_path="hardware.modules.escs",
                 class_name="escs",
+                enabled=True,
+            ),
+            "imu": DeviceSpec(
+                name="IMU",
+                address=0x10,
+                module_path="hardware.modules.imu",
+                class_name="imu",
+                enabled=True,
+            ),
+            "temperature": DeviceSpec(
+                name="Temperature Sensor",
+                address=0x60,
+                module_path="hardware.modules.temperature",
+                class_name="temperature",
+                enabled=True,
+            ),
+            "torpedoes": DeviceSpec(
+                name="Torpedo Controller",
+                address=0x70,
+                module_path="hardware.modules.torpedoes",
+                class_name="torpedoes",
                 enabled=True,
             ),
         }
@@ -147,7 +175,7 @@ class Controller:
 
         return found
 
-    def _load_module_factory(self, spec: DeviceSpec) -> Callable[[], object]:
+    def _load_module_factory(self, spec: DeviceSpec) -> Callable[[], Runnable]:
         """
         @brief Dynamically import and return a factory that constructs the module instance.
 
@@ -238,3 +266,17 @@ class Controller:
                 self._last_seen_addresses = detected
 
             time.sleep(scan_interval)
+            
+    def run(self) -> None:
+        """
+        @brief Start the controller's bus monitoring loop.
+
+        @details
+        This method blocks indefinitely. It should be run in a dedicated thread
+        or as the main entry point of the hardware management process.
+        """
+        self.monitor_bus()
+        
+if __name__ == "__main__":
+    controller = Controller(bus_number=1)
+    controller.run()

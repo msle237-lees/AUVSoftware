@@ -1,12 +1,13 @@
 from smbus2 import SMBus
+import threading
 import time
 
 
 class imu:
-    def __init__(self, bus_number: int = 1, address: int = 0x10):
+    def __init__(self, bus_number: int, address: int, bus_lock: threading.Lock) -> None:
         self.bus_number = bus_number
         self.address = address
         self.bus = SMBus(bus_number)
         
-    def run(self):
-        pass # Implement IMU logic here, such as reading orientation and acceleration data for use in navigation and control
+    def run(self, stop_event : threading.Event) -> None:
+        pass  # Implement arm control logic here, such as sending position commands and reading feedback
