@@ -49,6 +49,7 @@ dependencies = [
     "stable-baselines3",
     "gymnasium",
     "psycopg2-binary",
+    "smbus2",
 ]
 
 [project.optional-dependencies]
