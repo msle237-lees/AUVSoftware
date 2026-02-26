@@ -38,17 +38,17 @@ class DeviceSpec:
     stop_event: threading.Event = field(default_factory=threading.Event)
 
 
-class Controller:
+class Interface:
     """
-    @brief Central controller for dynamic I2C device management in the AUV system.
+    @brief Central Interface for dynamic I2C device management in the AUV system.
 
     @details
-    The Controller class is responsible for monitoring the I2C bus for
+    The Interface class is responsible for monitoring the I2C bus for
     connected devices and managing their lifecycle within the AUV software
     stack. It continuously scans the bus for address changes and detects
     when new device addresses appear or disappear.
 
-    When a recognized I2C address is detected, the Controller:
+    When a recognized I2C address is detected, the Interface:
         - Maps the address to a known electrical board definition stored
           in an internal dictionary.
         - Instantiates the corresponding module interface.
@@ -56,9 +56,9 @@ class Controller:
     
     Each module thread operates independently, allowing concurrent
     interaction with multiple hardware subsystems (e.g., IMU, depth sensor,
-    power monitor, motor controller).
+    power monitor, motor Interface).
 
-    The Controller also provides configuration-level control over which
+    The Interface also provides configuration-level control over which
     modules are enabled or disabled. This allows:
         - Selective activation of hardware subsystems.
         - Development-time testing without specific boards connected.
@@ -278,5 +278,5 @@ class Controller:
         self.monitor_bus()
         
 if __name__ == "__main__":
-    controller = Controller(bus_number=1)
-    controller.run()
+    interface = Interface(bus_number=1)
+    interface.run()

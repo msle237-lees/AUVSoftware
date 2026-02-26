@@ -7,6 +7,17 @@ import requests
 
 
 class Controller:
+    """
+    @brief Central controller for joystick input and API communication.
+    @details
+    This class handles reading joystick inputs, mapping them to a control schema,
+    and posting the data to a FastAPI backend. It also manages run creation and sequencing.
+    
+    @note
+    - Use a generic Xbox-style controller for input.
+    - If using a different controller, adjust the axis/button mappings in get_input() accordingly.
+    - Ensure your FastAPI backend is running and accessible at API_BASE_URL.
+    """
     def __init__(self):
         pygame.init()
         self.joystick = None
