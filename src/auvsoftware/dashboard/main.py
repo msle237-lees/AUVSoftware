@@ -7,3 +7,6 @@ It is responsible for initializing the dashboard, starting the necessary threads
 
 from __future__ import annotations
 
+# Module imports
+from auvsoftware.database import crud
+
