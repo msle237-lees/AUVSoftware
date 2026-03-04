@@ -1,121 +1,116 @@
-"""
-@file run.py
-@brief ORM model for an AUV mission / run / episode.
-
-A Run represents a single execution of the vehicle or simulator.
-All sensor streams, control outputs, and frames reference this table via run_id.
-"""
+# models/run.py
+#
+# The Run table is the "parent" of everything else.
+# Every sensor reading, motor command, etc. is tied to a specific Run
+# via a foreign key. This lets you query "give me all IMU readings from run #5".
+#
+# Extra tracking fields added:
+#   status      — where in its lifecycle the run is (pending → running → done/failed)
+#   end_dt      — when the run finished (None while still running)
+#   notes       — free-text field for operators to annotate a run
+#   created_at  — when the row was inserted (auto-set by the DB)
 
 from __future__ import annotations
-
-from typing import List, Optional, TYPE_CHECKING
-
-from sqlalchemy import String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from auvsoftware.database.base import Base, TimestampMixin
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from auvsoftware.database.models.imu import IMUSample
-    from auvsoftware.database.models.depth import DepthSample
-    from auvsoftware.database.models.power import PowerSample
-    from auvsoftware.database.models.motor import MotorOutput
-    from auvsoftware.database.models.servo import ServoOutput
-    from auvsoftware.database.models.inputs import ControlInput
+    from auvsoftware.database.models.depth import Depth
+    from auvsoftware.database.models.imu import IMU
+    from auvsoftware.database.models.power import Power
+    from auvsoftware.database.models.inputs import Inputs
+    from auvsoftware.database.models.motor import Motor
+    from auvsoftware.database.models.servo import Servo
+    from auvsoftware.database.models.objects import Objects
+    from auvsoftware.database.models.process import ProcessExecution
 
-class Run(Base, TimestampMixin):
+import enum
+from datetime import datetime, timezone
+
+from sqlalchemy import Boolean, DateTime, Enum, Integer, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from auvsoftware.database.base import Base
+
+
+class RunStatus(enum.Enum):
     """
-    @brief Represents a single execution of the vehicle or simulator.
-
-    A Run is the top-level container for all logged data. Each sensor, control,
-    or frame table should reference Run.id as a foreign key.
+    Python Enum → stored as a PostgreSQL ENUM type.
+    SQLAlchemy keeps these in sync automatically.
     """
+    PENDING   = "pending"    # Initialised but not yet started
+    RUNNING   = "running"    # Actively collecting data
+    COMPLETED = "completed"  # Finished cleanly
+    FAILED    = "failed"     # Aborted due to an error
+    ABORTED   = "aborted"    # Manually cancelled
 
+
+class Run(Base):
+    """
+    One row = one complete vehicle run (real or simulated).
+
+    The `__tablename__` string is what the table is called in PostgreSQL.
+    Every model needs one.
+    """
     __tablename__ = "runs"
 
-    # Primary key
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-        doc="Unique identifier for this run.",
-    )
+    # --- Primary Key ---
+    # Mapped[int] is a type hint that tells SQLAlchemy (and your IDE) what
+    # Python type this column holds. mapped_column() defines the DB column.
+    # Integer primary keys with autoincrement are the standard PK pattern.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    # Metadata fields
-    name: Mapped[str] = mapped_column(
-        String(128),
+    # --- Core fields ---
+    # DateTime(timezone=True) stores timezone-aware timestamps in PostgreSQL.
+    # default=... sets the value in Python when you create a new Run().
+    # server_default= would set it in SQL — we use default= here so the
+    # value is available immediately without a round-trip to the DB.
+    dt: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
         nullable=False,
-        doc="Human-readable name for this run.",
+        default=lambda: datetime.now(timezone.utc),
     )
+    simulation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    platform: Mapped[str] = mapped_column(
-        String(32),
+    # --- Run lifecycle tracking ---
+    status: Mapped[RunStatus] = mapped_column(
+        Enum(RunStatus),
         nullable=False,
-        doc="Platform used for this run (e.g. 'hardware', 'simulation').",
+        default=RunStatus.PENDING,
+    )
+    end_dt: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,   # NULL while the run is still active
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # func.now() calls PostgreSQL's NOW() — the DB sets this automatically
+    # on INSERT. Good for audit trails since it's the DB clock, not the app clock.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
     )
 
-    vehicle: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        nullable=True,
-        doc="Vehicle name or identifier (e.g. 'auv1', 'sim1').",
-    )
+    # --- Relationships ---
+    # relationship() tells SQLAlchemy "when I load a Run, also let me access
+    # run.depth_readings as a Python list". It does NOT add any columns —
+    # the foreign key lives on the *child* table.
+    #
+    # back_populates="run" means the child model has a matching relationship
+    # called `run` that points back here. They stay in sync automatically.
+    #
+    # cascade="all, delete-orphan" means: if you delete a Run, also delete
+    # all its related rows. Without this, the DB would raise a FK violation.
+    depth_readings:   Mapped[list["Depth"]]   = relationship("Depth",   back_populates="run", cascade="all, delete-orphan")
+    imu_readings:     Mapped[list["IMU"]]     = relationship("IMU",     back_populates="run", cascade="all, delete-orphan")
+    power_readings:   Mapped[list["Power"]]   = relationship("Power",   back_populates="run", cascade="all, delete-orphan")
+    input_readings:   Mapped[list["Inputs"]]  = relationship("Inputs",  back_populates="run", cascade="all, delete-orphan")
+    motor_readings:   Mapped[list["Motor"]]   = relationship("Motor",   back_populates="run", cascade="all, delete-orphan")
+    servo_readings:   Mapped[list["Servo"]]   = relationship("Servo",   back_populates="run", cascade="all, delete-orphan")
+    object_readings:     Mapped[list["Objects"]]          = relationship("Objects",          back_populates="run", cascade="all, delete-orphan")
+    process_executions:  Mapped[list["ProcessExecution"]] = relationship("ProcessExecution", back_populates="run", cascade="all, delete-orphan")
 
-    operator: Mapped[Optional[str]] = mapped_column(
-        String(64),
-        nullable=True,
-        doc="Name of the operator or team responsible for this run.",
-    )
-
-    notes: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        doc="Additional notes or comments about this run.",
-    )
-
-    config_json: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-        doc="JSON string containing configuration parameters for this run.",
-    )
-
-    # Relationships
-    imu_samples: Mapped[List[IMUSample]] = relationship(
-        "IMUSample",
-        back_populates="run",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-    depth_samples: Mapped[List[DepthSample]] = relationship(
-        "DepthSample",
-        back_populates="run",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-    power_samples: Mapped[List[PowerSample]] = relationship(
-        "PowerSample",
-        back_populates="run",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-    motor_outputs: Mapped[List[MotorOutput]] = relationship(
-        "MotorOutput",
-        back_populates="run",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-    servo_outputs: Mapped[List[ServoOutput]] = relationship(
-        "ServoOutput",
-        back_populates="run",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
-    control_inputs: Mapped[List[ControlInput]] = relationship(
-        "ControlInput",
-        back_populates="run",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
+    def __repr__(self) -> str:
+        # __repr__ is what Python prints when you inspect an object.
+        # Very helpful when debugging in a REPL.
+        return f"<Run id={self.id} status={self.status.value} simulation={self.simulation}>"

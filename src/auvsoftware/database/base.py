@@ -1,33 +1,10 @@
-"""
-  @file base.py
-  @brief SQLAlchemy Declarative Base and common ORM mixins.
-"""
+# base.py
+# All SQLAlchemy models must inherit from a single "DeclarativeBase".
+# We create it once here and import it everywhere else.
+# Think of Base as the "registry" that keeps track of all your tables.
 
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import DateTime, func
+from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
-    """Base class for all ORM models."""
     pass
-
-
-class TimestampMixin:
-    """
-      @brief Common timestamp fields for ORM models.
-     
-      Adds created_at and updated_at columns to a table.
-    """
-
-    created_at: Mapped["DateTime"] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False,
-    )
-
-    updated_at: Mapped["DateTime"] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )

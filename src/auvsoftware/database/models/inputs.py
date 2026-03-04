@@ -1,108 +1,37 @@
-"""
-src/auvsoftware/database/models/inputs.py
+# models/inputs.py
 
-ORM model for pilot/controller input samples.
+from __future__ import annotations
+from typing import TYPE_CHECKING
 
-Each row represents one set of input values associated with a specific Run
-and timestamp.
-"""
+if TYPE_CHECKING:
+    from auvsoftware.database.models.run import Run
 
-from sqlalchemy import BigInteger, ForeignKey, Index, Float, SmallInteger
+from sqlalchemy import Double
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from auvsoftware.database.base import Base, TimestampMixin
-from auvsoftware.database.models.run import Run
+from auvsoftware.database.base import Base
+from auvsoftware.database.models.mixin import SensorMixin
 
 
-class ControlInput(Base, TimestampMixin):
-    """
-    Pilot/controller input sample.
+class Inputs(SensorMixin, Base):
+    __tablename__ = "inputs"
 
-    Conventions:
-    - t_us: monotonic timestamp in microseconds from the vehicle/controller
-    - seq: optional monotonic sequence number for this stream
+    # Translational setpoints
+    x: Mapped[float] = mapped_column(Double, nullable=False)
+    y: Mapped[float] = mapped_column(Double, nullable=False)
+    z: Mapped[float] = mapped_column(Double, nullable=False)
 
-    Axis conventions:
-    - x, y, z, yaw are continuous control axes (typically normalized)
-    - s1, s2, s3 are discrete switches/buttons
-    """
+    # Rotational setpoints
+    roll:  Mapped[float] = mapped_column(Double, nullable=False)
+    pitch: Mapped[float] = mapped_column(Double, nullable=False)
+    yaw:   Mapped[float] = mapped_column(Double, nullable=False)
 
-    __tablename__ = "control_inputs"
+    # Raw servo demand values
+    servo_1: Mapped[float] = mapped_column(Double, nullable=False)
+    servo_2: Mapped[float] = mapped_column(Double, nullable=False)
+    servo_3: Mapped[float] = mapped_column(Double, nullable=False)
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-        doc="Unique identifier for this control input sample",
-    )
+    run: Mapped["Run"] = relationship("Run", back_populates="input_readings")  # noqa: F821
 
-    run_id: Mapped[int] = mapped_column(
-        ForeignKey("runs.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-        doc="Run ID this sample belongs to",
-    )
-
-    run: Mapped[Run] = relationship(
-        "Run",
-        back_populates="control_inputs",
-        doc="Parent run relationship",
-    )
-
-    t_us: Mapped[int] = mapped_column(
-        BigInteger,
-        nullable=False,
-        doc="Monotonic timestamp (microseconds) from the vehicle/controller",
-    )
-
-    seq: Mapped[int | None] = mapped_column(
-        BigInteger,
-        nullable=True,
-        doc="Optional monotonic sequence number for this stream",
-    )
-
-    # Continuous control axes
-    x: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        doc="Input X axis (e.g., surge)",
-    )
-
-    y: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        doc="Input Y axis (e.g., sway)",
-    )
-
-    z: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        doc="Input Z axis (e.g., heave)",
-    )
-
-    yaw: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        doc="Yaw control input",
-    )
-
-    # Discrete switches / buttons
-    s1: Mapped[int] = mapped_column(
-        SmallInteger,
-        nullable=False,
-        doc="Switch/button S1 (0 or 1)",
-    )
-
-    s2: Mapped[int] = mapped_column(
-        SmallInteger,
-        nullable=False,
-        doc="Switch/button S2 (0 or 1)",
-    )
-
-    s3: Mapped[int] = mapped_column(
-        SmallInteger,
-        nullable=False,
-        doc="Switch/button S3 (0 or 1)",
-    )
-
-
-Index("ix_control_inputs_run_id_t_us", ControlInput.run_id, ControlInput.t_us)
+    def __repr__(self) -> str:
+        return f"<Inputs run_id={self.run_id} xyz=({self.x:.2f},{self.y:.2f},{self.z:.2f})>"

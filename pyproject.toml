@@ -34,22 +34,12 @@ classifiers = [
 ]
 
 dependencies = [
-    "pygame",
-    "numpy",
-    "pandas",
-    "pyyaml",
-    "requests",
-    "python-dotenv",
-    "sqlalchemy",
-    "fastapi",
-    "uvicorn",
+    "textual",
+    "textual-dev",
     "click",
-    "rich",
-    "torch",
-    "stable-baselines3",
-    "gymnasium",
+    "sqlalchemy",
     "psycopg2-binary",
-    "smbus2",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
@@ -67,14 +57,10 @@ docs = [
     "furo"
 ]
 
-hardware = [
-    "pyserial",
-    "smbus2",
-    "opencv-python"
-]
+hardware = []
 
 [project.scripts]
-auv = "auvsoftware.cli.main:cli"
+auv = "auvsoftware.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
