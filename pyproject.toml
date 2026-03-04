@@ -36,6 +36,7 @@ classifiers = [
 dependencies = [
     "textual",
     "textual-dev",
+    "textual-plotext",
     "click",
     "sqlalchemy",
     "psycopg2-binary",
