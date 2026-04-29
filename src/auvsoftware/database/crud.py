@@ -35,10 +35,10 @@ from auvsoftware.database.models.process import Process, ProcessExecution, Proce
 from auvsoftware.database.models.run import Run, RunStatus
 from auvsoftware.database.models.servo import Servo
 
-
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
+
 
 def get_all_runs(session: Session) -> list[Run]:
     """Return all runs ordered by most recent first."""
@@ -86,17 +86,23 @@ def delete_all_runs(session: Session) -> None:
 # Depth
 # ---------------------------------------------------------------------------
 
+
 def get_all_depth(session: Session, run_id: int) -> list[Depth]:
     """Return all depth readings for a run ordered by timestamp."""
-    return list(session.scalars(
-        select(Depth).where(Depth.run_id == run_id).order_by(Depth.timestamp)
-    ).all())
+    return list(
+        session.scalars(
+            select(Depth).where(Depth.run_id == run_id).order_by(Depth.timestamp)
+        ).all()
+    )
 
 
 def get_latest_depth(session: Session, run_id: int) -> Optional[Depth]:
     """Return the most recent depth reading for a run."""
     return session.scalars(
-        select(Depth).where(Depth.run_id == run_id).order_by(Depth.timestamp.desc()).limit(1)
+        select(Depth)
+        .where(Depth.run_id == run_id)
+        .order_by(Depth.timestamp.desc())
+        .limit(1)
     ).first()
 
 
@@ -126,11 +132,14 @@ def delete_all_depth(session: Session, run_id: int) -> None:
 # IMU
 # ---------------------------------------------------------------------------
 
+
 def get_all_imu(session: Session, run_id: int) -> list[IMU]:
     """Return all IMU readings for a run ordered by timestamp."""
-    return list(session.scalars(
-        select(IMU).where(IMU.run_id == run_id).order_by(IMU.timestamp)
-    ).all())
+    return list(
+        session.scalars(
+            select(IMU).where(IMU.run_id == run_id).order_by(IMU.timestamp)
+        ).all()
+    )
 
 
 def get_latest_imu(session: Session, run_id: int) -> Optional[IMU]:
@@ -143,16 +152,26 @@ def get_latest_imu(session: Session, run_id: int) -> Optional[IMU]:
 def insert_imu(
     session: Session,
     run_id: int,
-    gyro_x: float, gyro_y: float, gyro_z: float,
-    accel_x: float, accel_y: float, accel_z: float,
-    mag_x: float, mag_y: float,
+    gyro_x: float,
+    gyro_y: float,
+    gyro_z: float,
+    accel_x: float,
+    accel_y: float,
+    accel_z: float,
+    mag_x: float,
+    mag_y: float,
 ) -> IMU:
     """Insert and return a new IMU reading."""
     row = IMU(
         run_id=run_id,
-        gyro_x=gyro_x, gyro_y=gyro_y, gyro_z=gyro_z,
-        accel_x=accel_x, accel_y=accel_y, accel_z=accel_z,
-        mag_x=mag_x, mag_y=mag_y,
+        gyro_x=gyro_x,
+        gyro_y=gyro_y,
+        gyro_z=gyro_z,
+        accel_x=accel_x,
+        accel_y=accel_y,
+        accel_z=accel_z,
+        mag_x=mag_x,
+        mag_y=mag_y,
     )
     session.add(row)
     session.flush()
@@ -177,33 +196,51 @@ def delete_all_imu(session: Session, run_id: int) -> None:
 # Power
 # ---------------------------------------------------------------------------
 
+
 def get_all_power(session: Session, run_id: int) -> list[Power]:
     """Return all power readings for a run ordered by timestamp."""
-    return list(session.scalars(
-        select(Power).where(Power.run_id == run_id).order_by(Power.timestamp)
-    ).all())
+    return list(
+        session.scalars(
+            select(Power).where(Power.run_id == run_id).order_by(Power.timestamp)
+        ).all()
+    )
 
 
 def get_latest_power(session: Session, run_id: int) -> Optional[Power]:
     """Return the most recent power reading for a run."""
     return session.scalars(
-        select(Power).where(Power.run_id == run_id).order_by(Power.timestamp.desc()).limit(1)
+        select(Power)
+        .where(Power.run_id == run_id)
+        .order_by(Power.timestamp.desc())
+        .limit(1)
     ).first()
 
 
 def insert_power(
     session: Session,
     run_id: int,
-    voltage_1: float, voltage_2: float, voltage_3: float,
-    current_1: float, current_2: float, current_3: float,
-    temp_1: float,    temp_2: float,    temp_3: float,
+    voltage_1: float,
+    voltage_2: float,
+    voltage_3: float,
+    current_1: float,
+    current_2: float,
+    current_3: float,
+    temp_1: float,
+    temp_2: float,
+    temp_3: float,
 ) -> Power:
     """Insert and return a new power reading."""
     row = Power(
         run_id=run_id,
-        voltage_1=voltage_1, voltage_2=voltage_2, voltage_3=voltage_3,
-        current_1=current_1, current_2=current_2, current_3=current_3,
-        temp_1=temp_1,       temp_2=temp_2,       temp_3=temp_3,
+        voltage_1=voltage_1,
+        voltage_2=voltage_2,
+        voltage_3=voltage_3,
+        current_1=current_1,
+        current_2=current_2,
+        current_3=current_3,
+        temp_1=temp_1,
+        temp_2=temp_2,
+        temp_3=temp_3,
     )
     session.add(row)
     session.flush()
@@ -228,33 +265,51 @@ def delete_all_power(session: Session, run_id: int) -> None:
 # Inputs
 # ---------------------------------------------------------------------------
 
+
 def get_all_inputs(session: Session, run_id: int) -> list[Inputs]:
     """Return all input readings for a run ordered by timestamp."""
-    return list(session.scalars(
-        select(Inputs).where(Inputs.run_id == run_id).order_by(Inputs.timestamp)
-    ).all())
+    return list(
+        session.scalars(
+            select(Inputs).where(Inputs.run_id == run_id).order_by(Inputs.timestamp)
+        ).all()
+    )
 
 
 def get_latest_inputs(session: Session, run_id: int) -> Optional[Inputs]:
     """Return the most recent input reading for a run."""
     return session.scalars(
-        select(Inputs).where(Inputs.run_id == run_id).order_by(Inputs.timestamp.desc()).limit(1)
+        select(Inputs)
+        .where(Inputs.run_id == run_id)
+        .order_by(Inputs.timestamp.desc())
+        .limit(1)
     ).first()
 
 
 def insert_inputs(
     session: Session,
     run_id: int,
-    x: float, y: float, z: float,
-    roll: float, pitch: float, yaw: float,
-    servo_1: float, servo_2: float, servo_3: float,
+    x: float,
+    y: float,
+    z: float,
+    roll: float,
+    pitch: float,
+    yaw: float,
+    servo_1: float,
+    servo_2: float,
+    servo_3: float,
 ) -> Inputs:
     """Insert and return a new inputs reading."""
     row = Inputs(
         run_id=run_id,
-        x=x, y=y, z=z,
-        roll=roll, pitch=pitch, yaw=yaw,
-        servo_1=servo_1, servo_2=servo_2, servo_3=servo_3,
+        x=x,
+        y=y,
+        z=z,
+        roll=roll,
+        pitch=pitch,
+        yaw=yaw,
+        servo_1=servo_1,
+        servo_2=servo_2,
+        servo_3=servo_3,
     )
     session.add(row)
     session.flush()
@@ -279,31 +334,49 @@ def delete_all_inputs(session: Session, run_id: int) -> None:
 # Motor
 # ---------------------------------------------------------------------------
 
+
 def get_all_motor(session: Session, run_id: int) -> list[Motor]:
     """Return all motor readings for a run ordered by timestamp."""
-    return list(session.scalars(
-        select(Motor).where(Motor.run_id == run_id).order_by(Motor.timestamp)
-    ).all())
+    return list(
+        session.scalars(
+            select(Motor).where(Motor.run_id == run_id).order_by(Motor.timestamp)
+        ).all()
+    )
 
 
 def get_latest_motor(session: Session, run_id: int) -> Optional[Motor]:
     """Return the most recent motor reading for a run."""
     return session.scalars(
-        select(Motor).where(Motor.run_id == run_id).order_by(Motor.timestamp.desc()).limit(1)
+        select(Motor)
+        .where(Motor.run_id == run_id)
+        .order_by(Motor.timestamp.desc())
+        .limit(1)
     ).first()
 
 
 def insert_motor(
     session: Session,
     run_id: int,
-    M1: int, M2: int, M3: int, M4: int,
-    M5: int, M6: int, M7: int, M8: int,
+    M1: int,
+    M2: int,
+    M3: int,
+    M4: int,
+    M5: int,
+    M6: int,
+    M7: int,
+    M8: int,
 ) -> Motor:
     """Insert and return a new motor reading."""
     row = Motor(
         run_id=run_id,
-        M1=M1, M2=M2, M3=M3, M4=M4,
-        M5=M5, M6=M6, M7=M7, M8=M8,
+        M1=M1,
+        M2=M2,
+        M3=M3,
+        M4=M4,
+        M5=M5,
+        M6=M6,
+        M7=M7,
+        M8=M8,
     )
     session.add(row)
     session.flush()
@@ -328,24 +401,32 @@ def delete_all_motor(session: Session, run_id: int) -> None:
 # Servo
 # ---------------------------------------------------------------------------
 
+
 def get_all_servo(session: Session, run_id: int) -> list[Servo]:
     """Return all servo readings for a run ordered by timestamp."""
-    return list(session.scalars(
-        select(Servo).where(Servo.run_id == run_id).order_by(Servo.timestamp)
-    ).all())
+    return list(
+        session.scalars(
+            select(Servo).where(Servo.run_id == run_id).order_by(Servo.timestamp)
+        ).all()
+    )
 
 
 def get_latest_servo(session: Session, run_id: int) -> Optional[Servo]:
     """Return the most recent servo reading for a run."""
     return session.scalars(
-        select(Servo).where(Servo.run_id == run_id).order_by(Servo.timestamp.desc()).limit(1)
+        select(Servo)
+        .where(Servo.run_id == run_id)
+        .order_by(Servo.timestamp.desc())
+        .limit(1)
     ).first()
 
 
 def insert_servo(
     session: Session,
     run_id: int,
-    S1: int, S2: int, S3: int,
+    S1: int,
+    S2: int,
+    S3: int,
 ) -> Servo:
     """Insert and return a new servo reading."""
     row = Servo(run_id=run_id, S1=S1, S2=S2, S3=S3)
@@ -372,17 +453,23 @@ def delete_all_servo(session: Session, run_id: int) -> None:
 # Objects
 # ---------------------------------------------------------------------------
 
+
 def get_all_objects(session: Session, run_id: int) -> list[Objects]:
     """Return all object detection readings for a run ordered by timestamp."""
-    return list(session.scalars(
-        select(Objects).where(Objects.run_id == run_id).order_by(Objects.timestamp)
-    ).all())
+    return list(
+        session.scalars(
+            select(Objects).where(Objects.run_id == run_id).order_by(Objects.timestamp)
+        ).all()
+    )
 
 
 def get_latest_objects(session: Session, run_id: int) -> Optional[Objects]:
     """Return the most recent object detection reading for a run."""
     return session.scalars(
-        select(Objects).where(Objects.run_id == run_id).order_by(Objects.timestamp.desc()).limit(1)
+        select(Objects)
+        .where(Objects.run_id == run_id)
+        .order_by(Objects.timestamp.desc())
+        .limit(1)
     ).first()
 
 
@@ -411,6 +498,7 @@ def delete_all_objects(session: Session, run_id: int) -> None:
 # ---------------------------------------------------------------------------
 # Process
 # ---------------------------------------------------------------------------
+
 
 def get_all_processes(session: Session) -> list[Process]:
     """Return all registered processes ordered by name."""
@@ -459,16 +547,21 @@ def delete_all_processes(session: Session) -> None:
 # ProcessExecution
 # ---------------------------------------------------------------------------
 
+
 def get_all_process_executions(session: Session, run_id: int) -> list[ProcessExecution]:
     """Return all process executions for a run ordered by start time."""
-    return list(session.scalars(
-        select(ProcessExecution)
-        .where(ProcessExecution.run_id == run_id)
-        .order_by(ProcessExecution.started_at)
-    ).all())
+    return list(
+        session.scalars(
+            select(ProcessExecution)
+            .where(ProcessExecution.run_id == run_id)
+            .order_by(ProcessExecution.started_at)
+        ).all()
+    )
 
 
-def get_latest_process_execution(session: Session, run_id: int) -> Optional[ProcessExecution]:
+def get_latest_process_execution(
+    session: Session, run_id: int
+) -> Optional[ProcessExecution]:
     """Return the most recently started process execution for a run."""
     return session.scalars(
         select(ProcessExecution)
