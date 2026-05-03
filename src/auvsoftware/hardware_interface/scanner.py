@@ -43,7 +43,8 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nScan interrupted by user.")
+    while True:
+        try:
+            main()
+        except KeyboardInterrupt:
+            print("\nScan interrupted by user.")
