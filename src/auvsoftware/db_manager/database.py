@@ -1,8 +1,8 @@
-import aiosqlite
-from typing import List, Optional, Tuple
 from datetime import datetime
+from typing import List, Optional, Tuple
 
-from src.auvsoftware.config import get_env
+import aiosqlite
+from config import get_env
 
 
 class DatabaseManager:
@@ -143,8 +143,7 @@ if __name__ == "__main__":
     import asyncio
 
     async def main():
-        db_path = get_env("DATABASE_PATH", default="auv_database.db")
-        db_manager = DatabaseManager(db_path)
+        db_manager = DatabaseManager(get_env("AUV_DB_PATH", default="auv_database.db"))
         await db_manager.connect()
         await db_manager.setup()
         await db_manager.close()

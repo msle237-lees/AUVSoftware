@@ -1,5 +1,7 @@
-from typing import Optional, List
-from pydantic import BaseModel, Field, conint, confloat, constr
+from typing import Optional
+
+from pydantic import BaseModel, Field, confloat, conint, constr
+
 
 # ---- inputs ----
 class InputsCreate(BaseModel):

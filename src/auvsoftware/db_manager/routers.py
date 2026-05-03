@@ -1,7 +1,7 @@
 from typing import Optional, Sequence
 
 import aiosqlite
-from fastapi import APIRouter, Depends, HTTPException, Query, Form
+from fastapi import APIRouter, Depends, Form, HTTPException, Query
 
 from src.auvsoftware.db_manager.deps import get_db
 

@@ -2,10 +2,10 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 import aiosqlite
+from config import get_env
 from fastapi import FastAPI, Request
 
 from src.auvsoftware.db_manager.database import DatabaseManager
-from src.auvsoftware.config import get_env
 
 
 @asynccontextmanager
@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     App startup/shutdown: create the DB connection, ensure tables exist,
     enable foreign keys, and make rows accessible by column name.
     """
-    db_path = get_env("DATABASE_PATH", default="auv_database.db")
+    db_path = get_env("AUV_DB_PATH", default="auv_database.db", required=True)
     dbm = DatabaseManager(db_path)
     await dbm.connect()
 
