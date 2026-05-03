@@ -1,4 +1,5 @@
 import argparse
+import time
 
 from smbus2 import SMBus
 
@@ -46,6 +47,7 @@ if __name__ == "__main__":
     while True:
         try:
             main()
+            time.sleep(5)  # Scan every 5 seconds
         except KeyboardInterrupt:
             print("\nScan interrupted by user.")
             break
