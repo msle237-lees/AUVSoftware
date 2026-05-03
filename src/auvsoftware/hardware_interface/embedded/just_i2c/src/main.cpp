@@ -7,11 +7,12 @@ const char message[] = "Hello World";
 
 void onRequest() {
   Wire.write((const uint8_t*)message, sizeof(message) - 1);
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 }
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
+
+  digitalWrite(LED_BUILTIN, HIGH);
 
   Wire.begin(I2C_ADDRESS);
   Wire.onRequest(onRequest);
