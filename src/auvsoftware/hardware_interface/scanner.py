@@ -9,12 +9,12 @@ def scan_i2c_bus(bus_number: int) -> list[int]:
     detected = []
 
     with SMBus(bus_number) as bus:
-        for address in range(0x03, 0x78):  # Valid I2C address range
+        for address in range(0x03, 0x78):
             try:
-                bus.read_byte(address)
+                bus.write_quick(address)  # address + write bit only, no data phase
                 detected.append(address)
             except OSError:
-                pass  # No device at this address
+                pass
 
     return detected
 
