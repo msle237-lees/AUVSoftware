@@ -1,3 +1,4 @@
+import argparse
 import time
 
 from auvsoftware.config import get_env
@@ -51,5 +52,13 @@ class ESCController:
             print("ESCController stopped by user.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="ESC Controller for AUV")
+    parser.add_argument(
+        "--bus", 
+        type=int, 
+        default=8, 
+        help="I2C bus number (default from .env)"
+    )
+    args = parser.parse_args()
     controller = ESCController()
     controller.run()
