@@ -1,12 +1,11 @@
-import argparse
 import time
 
 from auvsoftware.config import get_env
 from auvsoftware.hardware_interface.i2c_commands import write
 from auvsoftware.quick_request import AUVClient
 
-# _BUS: int = int(get_env("I2C_BUS", required=True))
-# _ADDRESS: int = int(get_env("ESC_I2C_ADDRESS", required=True), 16)
+_BUS: int = int(get_env("I2C_BUS", required=True))
+_ADDRESS: int = int(get_env("ESC_I2C_ADDRESS", required=True), 16)
 
 _REGISTER: int = 0x00
 _MIN: int = 0
@@ -52,21 +51,5 @@ class ESCController:
             print("ESCController stopped by user.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ESC Controller for AUV")
-    parser.add_argument(
-        "--bus", 
-        type=int, 
-        default=7,
-        help="I2C bus number (default from .env)"
-    )
-    parser.add_argument(
-        "--address",
-        type=lambda x: int(x, 16),
-        default=0x08,
-        help="I2C address of ESC controller (default from .env)"
-    )
-    args = parser.parse_args()
-    _BUS = args.bus
-    _ADDRESS = args.address
     controller = ESCController()
     controller.run()
