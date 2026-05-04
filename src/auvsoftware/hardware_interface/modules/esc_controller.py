@@ -56,9 +56,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bus", 
         type=int, 
-        default=8, 
+        default=7,
         help="I2C bus number (default from .env)"
     )
+    parser.add_argument(
+        "--address",
+        type=lambda x: int(x, 16),
+        default=0x08,
+        help="I2C address of ESC controller (default from .env)"
+    )
     args = parser.parse_args()
+    _BUS = args.bus
+    _ADDRESS = args.address
     controller = ESCController()
     controller.run()
