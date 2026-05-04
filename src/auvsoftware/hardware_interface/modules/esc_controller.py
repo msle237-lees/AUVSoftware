@@ -1,5 +1,8 @@
+import time
+
 from auvsoftware.config import get_env
 from auvsoftware.hardware_interface.i2c_commands import write
+from auvsoftware.quick_request import AUVClient
 
 _BUS: int = int(get_env("I2C_BUS", required=True))
 _ADDRESS: int = int(get_env("ESC_I2C_ADDRESS", required=True), 16)
@@ -18,3 +21,35 @@ def set_thrust(motor1: int, motor2: int, motor3: int, motor4: int, vertical: int
     thrusts = [_clamp(v) for v in (motor1, motor2, motor3, motor4, vertical)]
     payload = bytes([_REGISTER] + thrusts)
     write(_BUS, _ADDRESS, payload)
+
+class ESCController:
+    def __init__(self) -> None:
+        self.auv_client = AUVClient()
+
+    def update(self) -> None:
+        """Fetch the latest desired thrust values from the API and send to ESCs."""
+        data = self.auv_client.latest("outputs")
+        if data is None:
+            print("No output commands available.")
+            return
+
+        motor1 = data.get("MOTOR1", 127)
+        motor2 = data.get("MOTOR2", 127)
+        motor3 = data.get("MOTOR3", 127)
+        motor4 = data.get("MOTOR4", 127)
+        vertical = data.get("VERTICAL_THRUST", 127)
+
+        set_thrust(motor1, motor2, motor3, motor4, vertical)
+
+    def run(self) -> None:
+        """Continuously update ESCs with the latest commands from the API."""
+        try:
+            while True:
+                self.update()
+                time.sleep(0.05)  # Update at 20 Hz
+        except KeyboardInterrupt:
+            print("ESCController stopped by user.")
+
+if __name__ == "__main__":
+    controller = ESCController()
+    controller.run()
