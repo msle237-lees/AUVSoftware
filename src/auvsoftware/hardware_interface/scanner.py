@@ -5,17 +5,14 @@ from smbus2 import SMBus
 
 
 def scan_i2c_bus(bus_number: int) -> list[int]:
-    """Scan an I2C bus and return a list of detected device addresses."""
     detected = []
-
     with SMBus(bus_number) as bus:
         for address in range(0x03, 0x78):
             try:
-                bus.write_quick(address)  # address + write bit only, no data phase
+                bus.write_byte(address, 0x00)  # write probe — never triggers onRequest
                 detected.append(address)
             except OSError:
                 pass
-
     return detected
 
 
