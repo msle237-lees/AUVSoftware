@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-#define I2C_ADDRESS 0x09
+#define I2C_ADDRESS 0x08
 
 const char message[] = "Hello World";
 volatile bool aborted = false;
