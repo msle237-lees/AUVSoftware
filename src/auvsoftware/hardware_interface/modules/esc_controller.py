@@ -5,8 +5,8 @@ from auvsoftware.config import get_env
 from auvsoftware.hardware_interface.i2c_commands import write
 from auvsoftware.quick_request import AUVClient
 
-_BUS: int = int(get_env("I2C_BUS", required=True))
-_ADDRESS: int = int(get_env("ESC_I2C_ADDRESS", required=True), 16)
+# _BUS: int = int(get_env("I2C_BUS", required=True))
+# _ADDRESS: int = int(get_env("ESC_I2C_ADDRESS", required=True), 16)
 
 _REGISTER: int = 0x00
 _MIN: int = 0
