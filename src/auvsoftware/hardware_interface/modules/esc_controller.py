@@ -56,7 +56,10 @@ class ESCController:
 
 def _test() -> None:
     """Send neutral thrust to all motors and confirm over I2C without the database."""
-    print(f"Sending neutral ({_NEUTRAL}) to all motors on bus {_BUS}, address {hex(_ADDRESS)}...")
+    print(
+        f"Sending neutral ({_NEUTRAL}) to all motors on bus {_BUS},", 
+        f"address {_ADDRESS:#04x}..."
+    )
     try:
         set_thrust(_NEUTRAL, _NEUTRAL, _NEUTRAL, _NEUTRAL, _NEUTRAL)
         print("OK — payload delivered successfully.")
@@ -66,7 +69,11 @@ def _test() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ESC Controller")
-    parser.add_argument("--test", action="store_true", help="Send neutral thrust values without the database")
+    parser.add_argument(
+        "--test", 
+        action="store_true", 
+        help="Send neutral thrust values without the database"
+    )
     args = parser.parse_args()
 
     if args.test:
