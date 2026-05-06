@@ -5,7 +5,7 @@ import aiosqlite
 from config import get_env
 from fastapi import FastAPI, Request
 
-from src.auvsoftware.db_manager.database import DatabaseManager
+from database import DatabaseManager
 
 
 @asynccontextmanager
