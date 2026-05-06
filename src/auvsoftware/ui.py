@@ -36,7 +36,6 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
-    DataTable,
     Footer,
     Header,
     Input,
@@ -219,9 +218,9 @@ class ServicesPanel(Vertical):
 
 
 class ControllersPanel(VerticalScroll):
-    """Bottom-left — HardwareProcessManager.status() per controller.
+    """Bottom-left — HardwareProcessManager.status() per controller with start/stop.
 
-    Three colour states per row:
+    Three dot states per row:
         not enabled                 → grey  (●)
         enabled, not detected       → amber (◐)
         enabled, detected, running  → green (●)
@@ -229,58 +228,58 @@ class ControllersPanel(VerticalScroll):
 
     DEFAULT_CSS = """
     ControllersPanel { height: 1fr; }
-    ControllersPanel DataTable { height: auto; }
-    ControllersPanel .legend { color: $text-muted; padding: 0 1; }
+    ControllersPanel .row {
+        height: 3; padding: 0 1; layout: horizontal;
+        border-bottom: dashed $surface-lighten-2;
+    }
+    ControllersPanel .row.last { border-bottom: none; }
+    ControllersPanel .dot  { width: 3;  content-align: center middle; }
+    ControllersPanel .name { width: 10; content-align: left middle; }
+    ControllersPanel .flag {
+        width: 12; content-align: left middle; color: $text-muted;
+    }
+    ControllersPanel Button { min-width: 9; height: 1; margin-left: 1; }
+    ControllersPanel .dot-on      { color: $success; }
+    ControllersPanel .dot-partial { color: $warning; }
+    ControllersPanel .dot-off     { color: $text-muted; }
     """
 
     controller_state: reactive[dict[str, dict]] = reactive(dict, recompose=False)
 
     def compose(self) -> ComposeResult:
         yield PanelTitle("◆  CONTROLLERS")
-        table: DataTable = DataTable(zebra_stripes=False, cursor_type="row",
-                                     show_cursor=True)
-        table.add_column("",         key="glyph")
-        table.add_column("name",     key="name")
-        table.add_column("enabled",  key="enabled")
-        table.add_column("detected", key="detected")
-        table.add_column("running",  key="running")
-        table.add_column("pid",      key="pid")
-        for name in CONTROLLERS:
-            table.add_row("●", name, "no", "no", "no", "—", key=name)
-        yield table
-        yield Static(
-            "[grey]●[/] disabled    [yellow]◐[/] enabled · undetected    "
-            "[green]●[/] running",
-            classes="legend",
-        )
+        for i, name in enumerate(CONTROLLERS):
+            row_cls = "row" + (" last" if i == len(CONTROLLERS) - 1 else "")
+            with Horizontal(classes=row_cls):
+                yield Static("●", classes="dot dot-off", id=f"ctrl-dot-{name}")
+                yield Static(name, classes="name")
+                yield Static("en:— det:—", classes="flag", id=f"ctrl-flag-{name}")
+                yield Button("start", id=f"ctrl-toggle-{name}", variant="success")
 
     def watch_controller_state(self, state: dict[str, dict]) -> None:
-        table = self.query_one(DataTable)
         for name in CONTROLLERS:
-            info = state.get(name, {})
+            info     = state.get(name, {})
             enabled  = bool(info.get("enabled"))
             detected = bool(info.get("detected"))
             running  = bool(info.get("running"))
-            pid      = info.get("pid")
 
-            if not enabled:
-                glyph, colour = "●", "grey50"
-            elif not detected:
-                glyph, colour = "◐", "yellow"
-            elif running:
-                glyph, colour = "●", "green"
+            dot = self.query_one(f"#ctrl-dot-{name}", Static)
+            if running:
+                dot.update("●")
+                dot.set_classes("dot dot-on")
+            elif enabled and not detected:
+                dot.update("◐")
+                dot.set_classes("dot dot-partial")
             else:
-                glyph, colour = "○", "yellow"
+                dot.update("●")
+                dot.set_classes("dot dot-off")
 
-            try:
-                table.update_cell(name, "glyph", f"[{colour}]{glyph}[/]")
-                table.update_cell(name, "enabled",  "yes" if enabled  else "no")
-                table.update_cell(name, "detected", "yes" if detected else "no")
-                table.update_cell(name, "running",  "yes" if running  else "no")
-                table.update_cell(name, "pid", str(pid) if pid else "—")
-            except Exception:
-                # Table cell key mismatch — table not yet hydrated; ignore.
-                pass
+            self.query_one(f"#ctrl-flag-{name}", Static).update(
+                f"en:{'y' if enabled else 'n'} det:{'y' if detected else 'n'}"
+            )
+            btn = self.query_one(f"#ctrl-toggle-{name}", Button)
+            btn.label   = "stop"  if running else "start"
+            btn.variant = "error" if running else "success"
 
 
 class TelemetryPanel(Vertical):
@@ -669,6 +668,17 @@ class AUVControlApp(App):
         self._send_inputs()
 
     # ── service start/stop ───────────────────────────────────────────────
+    def _toggle_controller(self, name: str) -> None:
+        info = self.query_one(ControllersPanel).controller_state.get(name, {})
+        try:
+            if info.get("running"):
+                self.hpm.stop(name)
+            else:
+                self.hpm.start(name)
+        except Exception as exc:
+            self.notify(f"{name}: {exc}", severity="error")
+        self._poll_processes()
+
     def _toggle_service(self, name: str) -> None:
         info = self.query_one(ServicesPanel).service_state.get(name, {})
         try:
@@ -685,6 +695,8 @@ class AUVControlApp(App):
         bid = event.button.id or ""
         if bid.startswith("svc-toggle-"):
             self._toggle_service(bid.removeprefix("svc-toggle-"))
+        elif bid.startswith("ctrl-toggle-"):
+            self._toggle_controller(bid.removeprefix("ctrl-toggle-"))
         elif bid == "cmd-send":
             self._send_inputs()
         elif bid == "cmd-zero":
