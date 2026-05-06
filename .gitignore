@@ -1,7 +1,7 @@
 ./database/pgadmin
 ./database/postgres
 uv.lock
-src/auvsoftware/db_manager/auv_database.db
+*.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

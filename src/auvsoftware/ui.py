@@ -307,7 +307,7 @@ class TelemetryPanel(Vertical):
 
     # name → series  (set by App)
     telemetry: reactive[dict[str, TelemetrySeries]] = reactive(
-        dict, recompose=False
+        dict, recompose=False, always_update=True
     )
 
     # Channels surfaced in this panel, in render order.

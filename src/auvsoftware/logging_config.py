@@ -1,5 +1,6 @@
 import logging
 import logging.handlers
+import threading
 from pathlib import Path
 
 from auvsoftware.config import get_env
@@ -7,6 +8,7 @@ from auvsoftware.config import get_env
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _FORMAT = "%(asctime)s  [%(process_label)s]  %(levelname)-8s  %(message)s"
 _DATE = "%Y-%m-%d %H:%M:%S"
+_setup_lock = threading.Lock()
 
 
 def _log_path() -> Path:
@@ -17,13 +19,14 @@ def _log_path() -> Path:
 
 def setup_logging(process_label: str) -> None:
     """
-    Configure the root logger for the current subprocess to write to the
+    Configure the root logger for the current process/thread to write to the
     shared rotating log file. Call once at the top of each subprocess target.
     All loggers in the process inherit this handler automatically.
     """
     root = logging.getLogger()
-    if root.handlers:
-        return
+    with _setup_lock:
+        if root.handlers:
+            return
 
     root.setLevel(logging.INFO)
 
