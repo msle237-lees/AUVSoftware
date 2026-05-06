@@ -55,6 +55,7 @@ dependencies = [
     "starlette==0.48.0",
     "typing-inspection==0.4.2",
     "typing-extensions==4.15.0",
+    "textual==8.2.5",
     "uvicorn==0.35.0"
 ]
 
@@ -74,7 +75,7 @@ docs = [
 ]
 
 [project.scripts]
-auv = "auvsoftware.main:main"
+auv = "auvsoftware.ui:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
