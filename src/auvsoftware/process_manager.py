@@ -29,7 +29,7 @@ def _run_db() -> None:
 
     host = get_env("AUV_HOST", default="0.0.0.0")
     port = int(get_env("AUV_PORT", default="8000"))
-    uvicorn.run("run:app", host=host, port=port, reload=False)
+    uvicorn.run("run:app", host=host, port=port, reload=False, log_config=None)
 
 
 def _run_hardware_interface() -> None:
