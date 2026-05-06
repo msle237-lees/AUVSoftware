@@ -18,18 +18,30 @@ def _run_db() -> None:
     Inserts the db_manager directory into sys.path so its bare local
     imports (routers, deps, config) resolve without changing those files.
     """
+    import logging
     import sys
 
     import uvicorn
 
     from auvsoftware.logging_config import setup_logging
     setup_logging("db")
+    log = logging.getLogger(__name__)
 
     sys.path.insert(0, str(_DB_DIR))
 
+    try:
+        from run import app  # noqa: PLC0415
+    except Exception:
+        log.exception("DB app failed to import")
+        return
+
     host = get_env("AUV_HOST", default="0.0.0.0")
     port = int(get_env("AUV_PORT", default="8000"))
-    uvicorn.run("run:app", host=host, port=port, reload=False, log_config=None)
+    try:
+        uvicorn.run(app, host=host, port=port, reload=False, log_config=None)
+    except BaseException:
+        log.exception("DB server crashed")
+        raise
 
 
 def _run_hardware_interface() -> None:
