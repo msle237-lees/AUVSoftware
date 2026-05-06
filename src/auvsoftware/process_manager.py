@@ -22,6 +22,9 @@ def _run_db() -> None:
 
     import uvicorn
 
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("db")
+
     sys.path.insert(0, str(_DB_DIR))
 
     host = get_env("AUV_HOST", default="0.0.0.0")
@@ -31,13 +34,22 @@ def _run_db() -> None:
 
 def _run_hardware_interface() -> None:
     """Start the hardware interface reconcile loop."""
+    import logging
+
     from auvsoftware.hardware_interface.process_manager import (
         HardwareProcessManager,
     )
+    from auvsoftware.logging_config import setup_logging
+
+    setup_logging("hardware_interface")
+    log = logging.getLogger(__name__)
 
     pm = HardwareProcessManager()
     while True:
-        pm.reconcile()
+        try:
+            pm.reconcile()
+        except Exception as exc:
+            log.error("reconcile failed: %r", exc)
         time.sleep(_RECONCILE_INTERVAL)
 
 

@@ -1,3 +1,4 @@
+import logging
 import multiprocessing
 import time
 from typing import Callable
@@ -6,6 +7,7 @@ from auvsoftware.config import get_env
 from auvsoftware.hardware_interface.scanner import scan_i2c_bus
 
 _RETRY_DELAY: float = 5.0
+_log = logging.getLogger(__name__)
 
 
 def _with_retry(name: str, fn: Callable) -> None:
@@ -16,43 +18,57 @@ def _with_retry(name: str, fn: Callable) -> None:
         except KeyboardInterrupt:
             break
         except Exception as exc:
-            print(f"[{name}] crashed: {exc!r} — retrying in {_RETRY_DELAY}s")
+            _log.error("%s crashed: %r — retrying in %.1fs", name, exc, _RETRY_DELAY)
             time.sleep(_RETRY_DELAY)
 
 
 def _run_esc() -> None:
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("esc")
     from auvsoftware.hardware_interface.modules.esc_controller import ESCController
-    _with_retry("esc", ESCController().run)
+    _with_retry("esc", lambda: ESCController().run())
 
 
 def _run_arm() -> None:
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("arm")
     from auvsoftware.hardware_interface.modules.arm_controller import ArmController
-    _with_retry("arm", ArmController().run)
+    _with_retry("arm", lambda: ArmController().run())
 
 
 def _run_imu() -> None:
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("imu")
     from auvsoftware.hardware_interface.modules.imu_controller import ImuController
-    _with_retry("imu", ImuController().run)
+    _with_retry("imu", lambda: ImuController().run())
 
 
 def _run_psa() -> None:
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("psa")
     from auvsoftware.hardware_interface.modules.psa_controller import PsaController
-    _with_retry("psa", PsaController().run)
+    _with_retry("psa", lambda: PsaController().run())
 
 
 def _run_torpedo() -> None:
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("torpedo")
     from auvsoftware.hardware_interface.modules.tor_controller import TorpedoController
-    _with_retry("torpedo", TorpedoController().run)
+    _with_retry("torpedo", lambda: TorpedoController().run())
 
 
 def _run_pressure() -> None:
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("pressure")
     from auvsoftware.hardware_interface.modules.pre_controller import PressureController
-    _with_retry("pressure", PressureController().run)
+    _with_retry("pressure", lambda: PressureController().run())
 
 
 def _run_display() -> None:
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("display")
     from auvsoftware.hardware_interface.modules.dis_controller import DisplayController
-    _with_retry("display", DisplayController().run)
+    _with_retry("display", lambda: DisplayController().run())
 
 
 # (flag_env_key, address_env_key, short_name, target_fn)

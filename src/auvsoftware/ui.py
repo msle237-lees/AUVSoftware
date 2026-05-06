@@ -33,6 +33,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Grid, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     DataTable,
@@ -453,6 +454,51 @@ class StatusBar(Static):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Log viewer screen
+# ─────────────────────────────────────────────────────────────────────────────
+class LogScreen(ModalScreen):
+    """Full-screen modal that tails the AUV log file. Press Escape or L to close."""
+
+    BINDINGS = [("escape", "dismiss", "Close"), ("l", "dismiss", "Close")]
+
+    DEFAULT_CSS = """
+    LogScreen { align: center middle; }
+    LogScreen > Vertical {
+        width: 95%; height: 90%;
+        border: round $accent;
+        background: $panel;
+    }
+    LogScreen #log-content { padding: 0 1; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield PanelTitle("◆  PROCESS LOGS  (Esc to close, auto-refreshes every 2s)")
+            yield VerticalScroll(Static(id="log-content"), id="log-scroll")
+
+    def on_mount(self) -> None:
+        self._refresh_log()
+        self.set_interval(2.0, self._refresh_log)
+
+    def _refresh_log(self) -> None:
+        from pathlib import Path
+
+        from auvsoftware.config import get_env
+        from auvsoftware.logging_config import _PROJECT_ROOT
+
+        log_path = Path(get_env("AUV_LOG_PATH", default="auv.log"))
+        if not log_path.is_absolute():
+            log_path = _PROJECT_ROOT / log_path
+        try:
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+            content = "\n".join(lines[-300:]) or "(no log entries yet)"
+        except FileNotFoundError:
+            content = f"(log file not found: {log_path})\nStart some processes first."
+        self.query_one("#log-content", Static).update(content)
+        self.query_one("#log-scroll", VerticalScroll).scroll_end(animate=False)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # App
 # ─────────────────────────────────────────────────────────────────────────────
 class AUVControlApp(App):
@@ -486,6 +532,7 @@ class AUVControlApp(App):
     BINDINGS = [
         Binding("q", "quit_safely", "Quit"),
         Binding("r", "refresh_all", "Refresh"),
+        Binding("l", "show_logs", "Logs"),
         Binding("a", "start_all_services", "Start all"),
         Binding("A", "stop_all_services", "Stop all", show=False),
         Binding("1", "toggle_service('db')", "DB", show=False),
@@ -582,6 +629,9 @@ class AUVControlApp(App):
         self.query_one(ControllersPanel).controller_state = ctrl
 
     # ── actions ──────────────────────────────────────────────────────────
+    def action_show_logs(self) -> None:
+        self.push_screen(LogScreen())
+
     def action_refresh_all(self) -> None:
         """`r` — force-refresh every panel immediately."""
         self._poll_processes()
