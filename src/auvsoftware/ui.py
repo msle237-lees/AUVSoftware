@@ -441,12 +441,12 @@ class StatusBar(Static):
     def watch_db_online(self, online: bool) -> None:
         self.set_class(online, "online")
         self.set_class(not online, "offline")
-        self._render()
+        self._refresh_content()
 
     def watch_last_post(self, _ack: str) -> None:
-        self._render()
+        self._refresh_content()
 
-    def _render(self) -> None:
+    def _refresh_content(self) -> None:
         badge = "● DB ONLINE" if self.db_online else "● DB OFFLINE"
         tail = f"   {self.last_post}" if self.last_post else ""
         self.update(f"{badge}    AUV CONTROL · v0.1{tail}")
