@@ -102,41 +102,18 @@ INPUT_FIELDS: tuple[str, ...] = (
 )
 TELEMETRY_TABLES: tuple[str, ...] = ("imu", "depth", "power_safety")
 
-POLL_INTERVAL: float = 0.5         # seconds — telemetry poll cadence
-STALE_AFTER: float = 2.0           # seconds — telemetry > this is stale
-SPARK_WINDOW: int = 32             # samples retained per sparkline series
-SPARK_CHARS: str = " ▁▂▃▄▅▆▇█"     # 9 levels
+POLL_INTERVAL: float = 0.5   # seconds — telemetry poll cadence
+STALE_AFTER: float  = 2.0   # seconds — mark series stale after this gap
+HISTORY: int        = 60    # samples kept per channel
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
-def sparkline(values: list[float], width: int = SPARK_WINDOW) -> str:
-    """Render a list of numeric samples as a unicode block sparkline."""
-    if not values:
-        return "·" * width
-    lo, hi = min(values), max(values)
-    span = (hi - lo) or 1.0
-    cells = [SPARK_CHARS[int((v - lo) / span * (len(SPARK_CHARS) - 1))]
-             for v in values]
-    pad = max(0, width - len(cells))
-    return ("·" * pad) + "".join(cells)
-
-
-def fmt(value: Any, places: int = 2) -> str:
-    """Compact numeric formatter; '—' for missing values."""
-    if value is None:
-        return "—"
-    try:
-        return f"{float(value):+.{places}f}"
-    except (TypeError, ValueError):
-        return str(value)
-
-
 @dataclass
 class TelemetrySeries:
     """Ring buffer of recent samples for a single channel + last-seen ts."""
-    samples: Deque[float] = field(default_factory=lambda: deque(maxlen=SPARK_WINDOW))
+    samples: Deque[float] = field(default_factory=lambda: deque(maxlen=HISTORY))
     last_update: float = 0.0
 
     def push(self, v: float | None) -> None:
@@ -282,87 +259,96 @@ class ControllersPanel(VerticalScroll):
             btn.variant = "error" if running else "success"
 
 
-class TelemetryPanel(Vertical):
-    """Top-right — IMU, depth, power-safety readouts with sparklines.
+class TimeSeriesPlot(Static):
+    """A single plotext line-graph widget for one group of channels."""
 
-    `telemetry` is a dict mapping channel-name → TelemetrySeries; staleness
-    is checked per channel against monotonic time.
+    DEFAULT_CSS = """
+    TimeSeriesPlot { height: 14; margin: 0 0 1 0; }
     """
+
+    def __init__(
+        self,
+        title: str,
+        channels: list[tuple[str, str]],
+        unit: str = "",
+    ) -> None:
+        super().__init__()
+        self._title    = title
+        self._channels = channels   # [(key, label), ...]
+        self._unit     = unit
+        self._data: dict[str, list[float]] = {k: [] for k, _ in channels}
+
+    def update_series(self, key: str, samples: list[float]) -> None:
+        if key in self._data:
+            self._data[key] = samples
+
+    def redraw(self) -> None:
+        import plotext as plt
+        from rich.text import Text
+
+        w = max(self.size.width - 2, 20)
+        h = max(self.size.height - 2, 6)
+
+        plt.clf()
+        plt.theme("dark")
+        plt.plotsize(w, h)
+        plt.title(self._title)
+        if self._unit:
+            plt.ylabel(self._unit)
+        plt.xlabel("samples")
+
+        has_data = False
+        for key, label in self._channels:
+            data = self._data[key]
+            if data:
+                has_data = True
+                plt.plot(data, label=label)
+
+        if has_data:
+            self.update(Text.from_ansi(plt.build()))
+        else:
+            self.update(f"  [dim]{self._title} — waiting for data[/dim]")
+
+
+class TelemetryPanel(VerticalScroll):
+    """Top-right — scrollable pane of grouped time-series plots."""
 
     DEFAULT_CSS = """
     TelemetryPanel { height: 1fr; }
-    TelemetryPanel .group-title {
-        color: $accent; padding: 1 1 0 1; text-style: bold;
-    }
-    TelemetryPanel .row {
-        layout: horizontal; height: 1; padding: 0 1;
-    }
-    TelemetryPanel .label { width: 12; color: $text-muted; }
-    TelemetryPanel .value { width: 14; }
-    TelemetryPanel .spark { width: 1fr; color: $accent; }
-    TelemetryPanel .stale .value,
-    TelemetryPanel .stale .spark,
-    TelemetryPanel .stale .label { color: $warning 50%; }
     """
 
-    # name → series  (set by App)
+    # Groups: (title, [(key, label), ...], y-axis unit)
+    PLOTS: tuple[tuple[str, list[tuple[str, str]], str], ...] = (
+        ("Accelerometer", [("imu.ax", "x"), ("imu.ay", "y"), ("imu.az", "z")], "m/s²"),
+        ("Gyroscope",     [("imu.gx", "x"), ("imu.gy", "y"), ("imu.gz", "z")], "rad/s"),
+        ("Magnetometer",  [("imu.mx", "x"), ("imu.my", "y"), ("imu.mz", "z")], "µT"),
+        ("Depth",         [("depth.m", "depth")], "m"),
+        ("Power",         [("psa.v", "V"), ("psa.i", "A"), ("psa.t", "°C")], ""),
+    )
+
+    # Flat list of all channel keys — used by App to initialise _telemetry.
+    ALL_KEYS: tuple[str, ...] = tuple(
+        key
+        for _, channels, _ in PLOTS
+        for key, _ in channels
+    )
+
     telemetry: reactive[dict[str, TelemetrySeries]] = reactive(
         dict, recompose=False, always_update=True
     )
 
-    # Channels surfaced in this panel, in render order.
-    CHANNELS: tuple[tuple[str, str, str], ...] = (
-        # (group, label, key)
-        ("IMU",   "accel x", "imu.ax"),
-        ("IMU",   "accel y", "imu.ay"),
-        ("IMU",   "accel z", "imu.az"),
-        ("IMU",   "gyro x",  "imu.gx"),
-        ("IMU",   "gyro y",  "imu.gy"),
-        ("IMU",   "gyro z",  "imu.gz"),
-        ("IMU",   "mag x",   "imu.mx"),
-        ("IMU",   "mag y",   "imu.my"),
-        ("IMU",   "mag z",   "imu.mz"),
-        ("DEPTH", "depth m", "depth.m"),
-        ("POWER", "battery V", "psa.v"),
-        ("POWER", "battery I", "psa.i"),
-        ("POWER", "temp °C",   "psa.t"),
-    )
-
     def compose(self) -> ComposeResult:
         yield PanelTitle("◆  TELEMETRY")
-        last_group: str | None = None
-        for group, label, key in self.CHANNELS:
-            if group != last_group:
-                yield Static(f"{group}", classes="group-title")
-                last_group = group
-            with Horizontal(classes="row", id=f"tel-row-{key.replace('.', '-')}"):
-                yield Static(label, classes="label")
-                yield Static("—", classes="value",
-                             id=f"tel-val-{key.replace('.', '-')}")
-                yield Static("·" * 20, classes="spark",
-                             id=f"tel-spk-{key.replace('.', '-')}")
+        for title, channels, unit in self.PLOTS:
+            yield TimeSeriesPlot(title=title, channels=channels, unit=unit)
 
     def watch_telemetry(self, telemetry: dict[str, TelemetrySeries]) -> None:
-        now = time.monotonic()
-        for _, _, key in self.CHANNELS:
-            series = telemetry.get(key)
-            row_id = f"tel-row-{key.replace('.', '-')}"
-            val_id = f"tel-val-{key.replace('.', '-')}"
-            spk_id = f"tel-spk-{key.replace('.', '-')}"
-
-            row = self.query_one(f"#{row_id}", Horizontal)
-            val_w = self.query_one(f"#{val_id}", Static)
-            spk_w = self.query_one(f"#{spk_id}", Static)
-
-            if series is None or not series.samples:
-                row.set_class(True, "stale")
-                val_w.update("—")
-                spk_w.update("·" * 20)
-                continue
-
-            row.set_class(series.is_stale(now), "stale")
-            val_w.update(fmt(series.latest()))
-            spk_w.update(sparkline(list(series.samples), width=20))
+        for plot in self.query(TimeSeriesPlot):
+            for key, _ in plot._channels:
+                series = telemetry.get(key)
+                if series:
+                    plot.update_series(key, list(series.samples))
+            plot.redraw()
 
 
 class ManualCommandPanel(Vertical):
@@ -547,10 +533,9 @@ class AUVControlApp(App):
         self.pm = ProcessManager()                # EXTERNAL: owned here
         self.hpm = HardwareProcessManager()       # EXTERNAL: owned here
         self.client = AUVClient()                 # EXTERNAL: owned here
-        # Telemetry ring buffers, keyed to TelemetryPanel.CHANNELS keys.
+        # Telemetry ring buffers, keyed to TelemetryPanel.ALL_KEYS.
         self._telemetry: dict[str, TelemetrySeries] = {
-            key: TelemetrySeries()
-            for _, _, key in TelemetryPanel.CHANNELS
+            key: TelemetrySeries() for key in TelemetryPanel.ALL_KEYS
         }
 
     # ── compose ──────────────────────────────────────────────────────────
