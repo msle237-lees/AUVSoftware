@@ -263,7 +263,7 @@ class TimeSeriesPlot(Static):
     """A single plotext line-graph widget for one group of channels."""
 
     DEFAULT_CSS = """
-    TimeSeriesPlot { height: 6; margin: 0 0 0.5 0; }
+    TimeSeriesPlot { height: 6; margin: 0 0 0 0; }
     """
 
     def __init__(
