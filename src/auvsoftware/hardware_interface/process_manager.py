@@ -1,5 +1,5 @@
 import logging
-import multiprocessing
+import threading
 import time
 from typing import Callable
 
@@ -10,65 +10,65 @@ _RETRY_DELAY: float = 5.0
 _log = logging.getLogger(__name__)
 
 
-def _with_retry(name: str, fn: Callable) -> None:
+def _with_retry(name: str, fn: Callable, stop_event: threading.Event) -> None:
     """Run *fn* in a loop, restarting after any exception (e.g. DB not yet up)."""
-    while True:
+    while not stop_event.is_set():
         try:
             fn()
         except KeyboardInterrupt:
             break
         except Exception as exc:
             _log.error("%s crashed: %r — retrying in %.1fs", name, exc, _RETRY_DELAY)
-            time.sleep(_RETRY_DELAY)
+            stop_event.wait(_RETRY_DELAY)
 
 
-def _run_esc() -> None:
+def _run_esc(stop_event: threading.Event) -> None:
     from auvsoftware.logging_config import setup_logging
     setup_logging("esc")
     from auvsoftware.hardware_interface.modules.esc_controller import ESCController
-    _with_retry("esc", lambda: ESCController().run())
+    _with_retry("esc", lambda: ESCController().run(), stop_event)
 
 
-def _run_arm() -> None:
+def _run_arm(stop_event: threading.Event) -> None:
     from auvsoftware.logging_config import setup_logging
     setup_logging("arm")
     from auvsoftware.hardware_interface.modules.arm_controller import ArmController
-    _with_retry("arm", lambda: ArmController().run())
+    _with_retry("arm", lambda: ArmController().run(), stop_event)
 
 
-def _run_imu() -> None:
+def _run_imu(stop_event: threading.Event) -> None:
     from auvsoftware.logging_config import setup_logging
     setup_logging("imu")
     from auvsoftware.hardware_interface.modules.imu_controller import ImuController
-    _with_retry("imu", lambda: ImuController().run())
+    _with_retry("imu", lambda: ImuController().run(), stop_event)
 
 
-def _run_psa() -> None:
+def _run_psa(stop_event: threading.Event) -> None:
     from auvsoftware.logging_config import setup_logging
     setup_logging("psa")
     from auvsoftware.hardware_interface.modules.psa_controller import PsaController
-    _with_retry("psa", lambda: PsaController().run())
+    _with_retry("psa", lambda: PsaController().run(), stop_event)
 
 
-def _run_torpedo() -> None:
+def _run_torpedo(stop_event: threading.Event) -> None:
     from auvsoftware.logging_config import setup_logging
     setup_logging("torpedo")
     from auvsoftware.hardware_interface.modules.tor_controller import TorpedoController
-    _with_retry("torpedo", lambda: TorpedoController().run())
+    _with_retry("torpedo", lambda: TorpedoController().run(), stop_event)
 
 
-def _run_pressure() -> None:
+def _run_pressure(stop_event: threading.Event) -> None:
     from auvsoftware.logging_config import setup_logging
     setup_logging("pressure")
     from auvsoftware.hardware_interface.modules.pre_controller import PressureController
-    _with_retry("pressure", lambda: PressureController().run())
+    _with_retry("pressure", lambda: PressureController().run(), stop_event)
 
 
-def _run_display() -> None:
+def _run_display(stop_event: threading.Event) -> None:
     from auvsoftware.logging_config import setup_logging
     setup_logging("display")
     from auvsoftware.hardware_interface.modules.dis_controller import DisplayController
-    _with_retry("display", lambda: DisplayController().run())
+    _with_retry("display", lambda: DisplayController().run(), stop_event)
 
 
 # (flag_env_key, address_env_key, short_name, target_fn)
@@ -82,7 +82,9 @@ _REGISTRY: list[tuple[str, str, str, Callable]] = [
     ("DISPLAY_CONTROLLER",  "DISPLAY_ADDRESS",  "display",  _run_display),
 ]
 
-_NAME_TO_TARGET: dict[str, Callable] = {name: fn for _, _, name, fn in _REGISTRY}
+_NAME_TO_TARGET: dict[str, Callable[[threading.Event], None]] = {
+    name: fn for _, _, name, fn in _REGISTRY
+}
 
 
 class HardwareProcessManager:
@@ -90,15 +92,19 @@ class HardwareProcessManager:
         """
         Args:
             dry_run: When True, log what would happen instead of spawning real
-                     processes. Useful for testing detection + flag logic without
+                     threads. Useful for testing detection + flag logic without
                      live hardware or a DB.
         """
         self.dry_run = dry_run
-        self._processes: dict[str, multiprocessing.Process] = {}
+        self._threads: dict[str, tuple[threading.Thread, threading.Event]] = {}
+
+    def _is_alive(self, name: str) -> bool:
+        entry = self._threads.get(name)
+        return entry is not None and entry[0].is_alive()
 
     def reconcile(self) -> None:
         """
-        Scan the I2C bus and sync running processes against .env config.
+        Scan the I2C bus and sync running threads against .env config.
         Starts a controller only when its flag is True AND its device is detected.
         Stops a controller when either condition becomes false.
         """
@@ -112,11 +118,10 @@ class HardwareProcessManager:
             address = int(addr_str.strip(), 16) if addr_str.strip() else None
 
             should_run = enabled and address is not None and address in detected
-            is_running = name in self._processes and self._processes[name].is_alive()
 
-            if should_run and not is_running:
+            if should_run and not self._is_alive(name):
                 self._spawn(name)
-            elif not should_run and is_running:
+            elif not should_run and self._is_alive(name):
                 self.stop(name)
 
     def start_all(self) -> None:
@@ -127,8 +132,8 @@ class HardwareProcessManager:
                 self._spawn(name)
 
     def stop_all(self) -> None:
-        """Terminate all running controller processes."""
-        for name in list(self._processes):
+        """Stop all running controller threads."""
+        for name in list(self._threads):
             self.stop(name)
 
     def start(self, name: str) -> None:
@@ -139,24 +144,25 @@ class HardwareProcessManager:
         self._spawn(name)
 
     def stop(self, name: str) -> None:
-        """Terminate a controller by short name. No-op if not running."""
+        """Signal a controller thread to stop and wait for it. No-op if not running."""
         if self.dry_run:
             print(f"[dry_run] stop: {name}")
             return
-        p = self._processes.pop(name, None)
-        if p is None:
+        entry = self._threads.pop(name, None)
+        if entry is None:
             return
-        p.terminate()
-        p.join(timeout=5)
-        if p.is_alive():
-            p.kill()
+        thread, stop_event = entry
+        stop_event.set()
+        thread.join(timeout=5)
+        if thread.is_alive():
+            _log.warning("%s thread did not exit within timeout", name)
 
     def status(self) -> dict[str, dict]:
         """
         Return status for every registered controller.
 
         Each entry: {"enabled": bool, "detected": bool, "running": bool,
-        "pid": int|None}
+        "tid": int|None}
         """
         try:
             bus = int(get_env("I2C_BUS_NUMBER", default="1"))
@@ -166,8 +172,8 @@ class HardwareProcessManager:
 
         result: dict[str, dict] = {}
         for flag_key, addr_key, name, _ in _REGISTRY:
-            p = self._processes.get(name)
-            alive = p is not None and p.is_alive()
+            entry = self._threads.get(name)
+            alive = entry is not None and entry[0].is_alive()
             addr_str = get_env(addr_key, default="")
             address = int(addr_str.strip(), 16) if addr_str.strip() else None
             result[name] = {
@@ -175,7 +181,7 @@ class HardwareProcessManager:
                 in ("true", "1", "yes"),
                 "detected": address is not None and address in detected,
                 "running": alive,
-                "pid": p.pid if alive else None,
+                "tid": entry[0].ident if alive else None,
             }
         return result
 
@@ -183,10 +189,11 @@ class HardwareProcessManager:
         if self.dry_run:
             print(f"[dry_run] spawn: {name}")
             return
-        if name in self._processes and self._processes[name].is_alive():
+        if self._is_alive(name):
             return
-        p = multiprocessing.Process(
-            target=_NAME_TO_TARGET[name], name=name, daemon=True
+        stop_event = threading.Event()
+        t = threading.Thread(
+            target=_NAME_TO_TARGET[name], args=(stop_event,), name=name, daemon=True
         )
-        p.start()
-        self._processes[name] = p
+        t.start()
+        self._threads[name] = (t, stop_event)
