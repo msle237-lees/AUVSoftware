@@ -263,7 +263,7 @@ class TimeSeriesPlot(Static):
     """A single plotext line-graph widget for one group of channels."""
 
     DEFAULT_CSS = """
-    TimeSeriesPlot { height: 14; margin: 0 0 1 0; }
+    TimeSeriesPlot { height: 9; margin: 0 0 1 0; }
     """
 
     def __init__(
@@ -287,22 +287,36 @@ class TimeSeriesPlot(Static):
         from rich.text import Text
 
         w = max(self.size.width - 2, 20)
-        h = max(self.size.height - 2, 6)
+        h = max(self.size.height - 2, 4)
 
         plt.clf()
         plt.theme("dark")
         plt.plotsize(w, h)
-        plt.title(self._title)
-        if self._unit:
-            plt.ylabel(self._unit)
-        plt.xlabel("samples")
 
         has_data = False
+        all_values: list[float] = []
+        value_labels: list[str] = []
+
         for key, label in self._channels:
             data = self._data[key]
             if data:
                 has_data = True
-                plt.plot(data, label=label)
+                all_values.extend(data)
+                plt.plot(data, marker="braille")
+                value_labels.append(f"{label}: {data[-1]:+.3f}")
+
+        # Title carries the group name and each channel's latest value.
+        suffix = "    " + "  ".join(value_labels) if value_labels else ""
+        plt.title(self._title + suffix)
+
+        # Y-axis: only min and max ticks.
+        if all_values:
+            lo, hi = min(all_values), max(all_values)
+            if abs(hi - lo) > 1e-9:
+                plt.yticks([lo, hi], [f"{lo:.2f}", f"{hi:.2f}"])
+
+        # Strip x-axis ticks and label entirely.
+        plt.xfrequency(0)
 
         if has_data:
             self.update(Text.from_ansi(plt.build()))
