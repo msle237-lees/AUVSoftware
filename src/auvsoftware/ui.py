@@ -3,20 +3,25 @@ AUV Control TUI
 ===============
 
 A Textual TUI for monitoring and controlling an Autonomous Underwater Vehicle.
+Modern dark-mode design with electric-blue accent, rounded panels, and animated
+status indicators.
 
 Layout:
-    ╭───────────────╮ ╭─────────────────────╮
-    │  Services     │ │  Telemetry          │
-    ├───────────────┤ │  IMU / Depth / Pwr  │
-    │  Controllers  │ ├─────────────────────┤
-    │               │ │  Manual Command     │
-    ╰───────────────╯ ╰─────────────────────╯
-              [ footer: keybindings · DB status ]
-
-External interfaces are imported from the auvsoftware package; if unavailable
-the app falls back to inert stubs so the UI can still be exercised standalone.
-Every external call is clearly labelled and isolated to keep this file focused
-on presentation logic only.
+    ╭─── SERVICES ────────────╮  ╭─── TELEMETRY ──────────────────╮
+    │ db          ⬤  pid 123  │  │  Accelerometer  x:+0.01 ...    │
+    │ hardware_if ○  pid —    │  │  [plotext graph]                │
+    │ movement    ⬤  pid 456  │  │  Gyroscope  ...                 │
+    │ camera      ○  pid —    │  │  [plotext graph]                │
+    │ ai          ○  pid —    │  │  Depth / Power ...              │
+    ╰─────────────────────────╯  ╰─────────────────────────────────╯
+    ╭─── CONTROLLERS ─────────╮  ╭─[Manual Command]─[PID Gains]───╮
+    │ esc  ⬤ en:y det:y       │  │  SURGE  SWAY  HEAVE  ROLL ...  │
+    │ arm  ◉ en:y det:n       │  │  [inputs] × 9                  │
+    │ imu  ○ en:n det:n       │  │  [Send]  [Zero all]            │
+    │ ...                     │  ╰─────────────────────────────────╯
+    ╰─────────────────────────╯
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    ⬤ DB ONLINE  ○ REAL    AUV CONTROL · v0.1    last cmd → 14:22:01
 
 Run with:  python ui.py
 """
@@ -41,35 +46,30 @@ from textual.widgets import (
     Input,
     Label,
     Static,
+    TabbedContent,
+    TabPane,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # External interface imports (with inert fallback stubs)
 # ─────────────────────────────────────────────────────────────────────────────
-# Each external call site below is clearly labelled `# EXTERNAL:` so business
-# logic stays out of this file. If the real packages aren't importable we fall
-# back to no-op stubs so the UI still runs for design review.
-
 try:
     from auvsoftware.process_manager import ProcessManager  # type: ignore
-except ImportError:  # pragma: no cover - stub for standalone preview
+except ImportError:
     class ProcessManager:  # type: ignore[no-redef]
         """Stub — replace with auvsoftware.process_manager.ProcessManager."""
-        def start(self, name: str) -> None: ...
+        def start(self, name: str, **_: Any) -> None: ...
         def stop(self, name: str) -> None: ...
         def start_all(self) -> None: ...
         def stop_all(self) -> None: ...
         def status(self) -> dict[str, dict]:
-            return {
-                "db": {"running": False, "pid": None},
-                "hardware_interface": {"running": False, "pid": None},
-            }
+            return {n: {"running": False, "pid": None} for n in SERVICES}
 
 try:
     from auvsoftware.hardware_interface.process_manager import (  # type: ignore
         HardwareProcessManager,
     )
-except ImportError:  # pragma: no cover
+except ImportError:
     class HardwareProcessManager:  # type: ignore[no-redef]
         """Stub — replace with auvsoftware.hardware_interface.process_manager."""
         def start(self, name: str) -> None: ...
@@ -83,7 +83,7 @@ except ImportError:  # pragma: no cover
 
 try:
     from auvsoftware.quick_request import AUVClient  # type: ignore
-except ImportError:  # pragma: no cover
+except ImportError:
     class AUVClient:  # type: ignore[no-redef]
         """Stub — replace with auvsoftware.quick_request.AUVClient."""
         def latest(self, table: str) -> dict | None: return None
@@ -93,18 +93,24 @@ except ImportError:  # pragma: no cover
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
-SERVICES: tuple[str, ...] = ("db", "hardware_interface")
+SERVICES: tuple[str, ...] = ("db", "hardware_interface", "movement", "camera", "ai")
 CONTROLLERS: tuple[str, ...] = (
     "esc", "arm", "imu", "psa", "torpedo", "pressure", "display",
 )
 INPUT_FIELDS: tuple[str, ...] = (
-    "SURGE", "SWAY", "HEAVE", "ROLL", "PITCH", "YAW", "S1", "S2", "S3", "ARM",
+    "SURGE", "SWAY", "HEAVE", "ROLL", "PITCH", "YAW", "S1", "S2", "S3",
 )
 TELEMETRY_TABLES: tuple[str, ...] = ("imu", "depth", "power_safety")
 
-POLL_INTERVAL: float = 0.5   # seconds — telemetry poll cadence
-STALE_AFTER: float  = 2.0   # seconds — mark series stale after this gap
-HISTORY: int        = 60    # samples kept per channel
+POLL_INTERVAL: float = 0.5
+STALE_AFTER: float   = 2.0
+HISTORY: int         = 60
+
+# Status dot glyphs
+DOT_ON      = "⬤"
+DOT_PARTIAL = "◉"
+DOT_OFF     = "○"
+DOT_BLINK   = "◎"   # alternated with DOT_ON for running services
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -112,7 +118,7 @@ HISTORY: int        = 60    # samples kept per channel
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class TelemetrySeries:
-    """Ring buffer of recent samples for a single channel + last-seen ts."""
+    """Ring buffer of recent samples for a single channel."""
     samples: Deque[float] = field(default_factory=lambda: deque(maxlen=HISTORY))
     last_update: float = 0.0
 
@@ -137,98 +143,105 @@ class TelemetrySeries:
 # Panel widgets
 # ─────────────────────────────────────────────────────────────────────────────
 class PanelTitle(Static):
-    """Small caps section title rendered above each panel body."""
+    """Accent-coloured section header rendered at the top of each panel."""
 
 
 class ServicesPanel(Vertical):
-    """Top-left — ProcessManager.status() + per-service start/stop toggles.
-
-    Reactive `service_state` is updated externally by the App's refresh tick;
-    `watch_service_state` repaints the table.
-    """
+    """Top-left — ProcessManager status with per-service start/stop toggles."""
 
     DEFAULT_CSS = """
     ServicesPanel { height: 1fr; }
     ServicesPanel .row {
         height: 3; padding: 0 1; layout: horizontal;
-        border-bottom: dashed $surface-lighten-2;
+        border-bottom: dashed #30363d;
     }
     ServicesPanel .row.last { border-bottom: none; }
-    ServicesPanel .name { width: 1fr; content-align: left middle; }
-    ServicesPanel .pid  { width: 12;  content-align: left middle; color: $text-muted; }
+    ServicesPanel .name { width: 1fr; content-align: left middle; color: #e6edf3; }
+    ServicesPanel .pid  { width: 10;  content-align: left middle; color: #8b949e; }
     ServicesPanel .dot  { width: 3;   content-align: center middle; }
-    ServicesPanel Button { min-width: 9; height: 1; margin-left: 1; }
-    ServicesPanel .running  { color: $success; }
-    ServicesPanel .stopped  { color: $error; }
+    ServicesPanel Button { min-width: 7; height: 1; margin-left: 1; }
+    ServicesPanel .dot-on      { color: #3fb950; }
+    ServicesPanel .dot-off     { color: #8b949e; }
+    ServicesPanel .hint { color: #8b949e; padding: 0 1 1 1; }
     """
 
     service_state: reactive[dict[str, dict]] = reactive(dict, recompose=False)
+    _blink_state: reactive[bool] = reactive(False)
 
     def compose(self) -> ComposeResult:
-        yield PanelTitle("◆  SERVICES")
+        yield PanelTitle("  SERVICES")
         for i, name in enumerate(SERVICES):
             classes = "row" + (" last" if i == len(SERVICES) - 1 else "")
             with Horizontal(classes=classes, id=f"svc-row-{name}"):
-                yield Static("●", classes="dot stopped", id=f"svc-dot-{name}")
+                yield Static(DOT_OFF, classes="dot dot-off", id=f"svc-dot-{name}")
                 yield Static(name, classes="name")
                 yield Static("pid —", classes="pid", id=f"svc-pid-{name}")
-                yield Button("start", id=f"svc-toggle-{name}",
-                             variant="success")
-        yield Static("[1] db   [2] hardware_interface   [a] start all   [A] stop all",
-                     classes="hint")
+                yield Button("start", id=f"svc-toggle-{name}", variant="success")
+        yield Static(
+            "[1] db  [2] hw  [3] move  [4] cam  [5] ai  [a] all  [A] stop all",
+            classes="hint",
+        )
+
+    def on_mount(self) -> None:
+        self.set_interval(0.8, self._tick_blink)
+
+    def _tick_blink(self) -> None:
+        self._blink_state = not self._blink_state
+        self._repaint_dots()
 
     def watch_service_state(self, state: dict[str, dict]) -> None:
+        self._repaint_dots(state)
+
+    def _repaint_dots(self, state: dict[str, dict] | None = None) -> None:
+        state = state if state is not None else self.service_state
         for name in SERVICES:
-            info = state.get(name, {"running": False, "pid": None})
+            info    = state.get(name, {"running": False, "pid": None})
             running = bool(info.get("running"))
-            pid = info.get("pid")
+            pid     = info.get("pid")
+
             dot = self.query_one(f"#svc-dot-{name}", Static)
-            dot.update("●")
-            dot.set_class(running, "running")
-            dot.set_class(not running, "stopped")
+            if running:
+                dot.update(DOT_BLINK if self._blink_state else DOT_ON)
+                dot.set_classes("dot dot-on")
+            else:
+                dot.update(DOT_OFF)
+                dot.set_classes("dot dot-off")
+
             self.query_one(f"#svc-pid-{name}", Static).update(
                 f"pid {pid}" if pid else "pid —"
             )
             btn = self.query_one(f"#svc-toggle-{name}", Button)
-            btn.label = "stop" if running else "start"
+            btn.label   = "stop"  if running else "start"
             btn.variant = "error" if running else "success"
 
 
 class ControllersPanel(VerticalScroll):
-    """Bottom-left — HardwareProcessManager.status() per controller with start/stop.
-
-    Three dot states per row:
-        not enabled                 → grey  (●)
-        enabled, not detected       → amber (◐)
-        enabled, detected, running  → green (●)
-    """
+    """Bottom-left — HardwareProcessManager status per controller."""
 
     DEFAULT_CSS = """
     ControllersPanel { height: 1fr; }
     ControllersPanel .row {
         height: 3; padding: 0 1; layout: horizontal;
-        border-bottom: dashed $surface-lighten-2;
+        border-bottom: dashed #30363d;
     }
     ControllersPanel .row.last { border-bottom: none; }
     ControllersPanel .dot  { width: 3;  content-align: center middle; }
-    ControllersPanel .name { width: 10; content-align: left middle; }
-    ControllersPanel .flag {
-        width: 12; content-align: left middle; color: $text-muted;
-    }
-    ControllersPanel Button { min-width: 9; height: 1; margin-left: 1; }
-    ControllersPanel .dot-on      { color: $success; }
-    ControllersPanel .dot-partial { color: $warning; }
-    ControllersPanel .dot-off     { color: $text-muted; }
+    ControllersPanel .name { width: 10; content-align: left middle; color: #e6edf3; }
+    ControllersPanel .flag { width: 14; content-align: left middle; color: #8b949e; }
+    ControllersPanel Button { min-width: 7; height: 1; margin-left: 1; }
+    ControllersPanel .dot-on      { color: #3fb950; }
+    ControllersPanel .dot-partial { color: #d29922; }
+    ControllersPanel .dot-off     { color: #8b949e; }
     """
 
     controller_state: reactive[dict[str, dict]] = reactive(dict, recompose=False)
 
     def compose(self) -> ComposeResult:
-        yield PanelTitle("◆  CONTROLLERS")
+        yield PanelTitle("  CONTROLLERS")
         for i, name in enumerate(CONTROLLERS):
             row_cls = "row" + (" last" if i == len(CONTROLLERS) - 1 else "")
             with Horizontal(classes=row_cls):
-                yield Static("●", classes="dot dot-off", id=f"ctrl-dot-{name}")
+                yield Static(DOT_OFF, classes="dot dot-off", id=f"ctrl-dot-{name}")
                 yield Static(name, classes="name")
                 yield Static("en:— det:—", classes="flag", id=f"ctrl-flag-{name}")
                 yield Button("start", id=f"ctrl-toggle-{name}", variant="success")
@@ -242,13 +255,13 @@ class ControllersPanel(VerticalScroll):
 
             dot = self.query_one(f"#ctrl-dot-{name}", Static)
             if running:
-                dot.update("●")
+                dot.update(DOT_ON)
                 dot.set_classes("dot dot-on")
             elif enabled and not detected:
-                dot.update("◐")
+                dot.update(DOT_PARTIAL)
                 dot.set_classes("dot dot-partial")
             else:
-                dot.update("●")
+                dot.update(DOT_OFF)
                 dot.set_classes("dot dot-off")
 
             self.query_one(f"#ctrl-flag-{name}", Static).update(
@@ -263,7 +276,7 @@ class TimeSeriesPlot(Static):
     """A single plotext line-graph widget for one group of channels."""
 
     DEFAULT_CSS = """
-    TimeSeriesPlot { height: 6; margin: 0 0 0 0; }
+    TimeSeriesPlot { height: 7; margin: 0 0 1 0; }
     """
 
     def __init__(
@@ -274,7 +287,7 @@ class TimeSeriesPlot(Static):
     ) -> None:
         super().__init__()
         self._title    = title
-        self._channels = channels   # [(key, label), ...]
+        self._channels = channels
         self._unit     = unit
         self._data: dict[str, list[float]] = {k: [] for k, _ in channels}
 
@@ -293,7 +306,7 @@ class TimeSeriesPlot(Static):
         plt.theme("dark")
         plt.plotsize(w, h)
 
-        has_data = False
+        has_data    = False
         all_values: list[float] = []
         value_labels: list[str] = []
 
@@ -305,23 +318,20 @@ class TimeSeriesPlot(Static):
                 plt.plot(data, marker="braille")
                 value_labels.append(f"{label}: {data[-1]:+.3f}")
 
-        # Title carries the group name and each channel's latest value.
         suffix = "    " + "  ".join(value_labels) if value_labels else ""
         plt.title(self._title + suffix)
 
-        # Y-axis: only min and max ticks.
         if all_values:
             lo, hi = min(all_values), max(all_values)
             if abs(hi - lo) > 1e-9:
                 plt.yticks([lo, hi], [f"{lo:.2f}", f"{hi:.2f}"])
 
-        # Strip x-axis ticks and label entirely.
         plt.xfrequency(0)
 
         if has_data:
             self.update(Text.from_ansi(plt.build()))
         else:
-            self.update(f"  [dim]{self._title} — waiting for data[/dim]")
+            self.update(f"  [dim]{self._title} — waiting for data…[/dim]")
 
 
 class TelemetryPanel(VerticalScroll):
@@ -331,7 +341,6 @@ class TelemetryPanel(VerticalScroll):
     TelemetryPanel { height: 1fr; }
     """
 
-    # Groups: (title, [(key, label), ...], y-axis unit)
     PLOTS: tuple[tuple[str, list[tuple[str, str]], str], ...] = (
         ("Accelerometer", [("imu.ax", "x"), ("imu.ay", "y"), ("imu.az", "z")], "m/s²"),
         ("Gyroscope",     [("imu.gx", "x"), ("imu.gy", "y"), ("imu.gz", "z")], "rad/s"),
@@ -340,11 +349,8 @@ class TelemetryPanel(VerticalScroll):
         ("Power",         [("psa.v", "V"), ("psa.i", "A"), ("psa.t", "°C")], ""),
     )
 
-    # Flat list of all channel keys — used by App to initialise _telemetry.
     ALL_KEYS: tuple[str, ...] = tuple(
-        key
-        for _, channels, _ in PLOTS
-        for key, _ in channels
+        key for _, channels, _ in PLOTS for key, _ in channels
     )
 
     telemetry: reactive[dict[str, TelemetrySeries]] = reactive(
@@ -352,7 +358,7 @@ class TelemetryPanel(VerticalScroll):
     )
 
     def compose(self) -> ComposeResult:
-        yield PanelTitle("◆  TELEMETRY")
+        yield PanelTitle("  TELEMETRY")
         for title, channels, unit in self.PLOTS:
             yield TimeSeriesPlot(title=title, channels=channels, unit=unit)
 
@@ -366,33 +372,29 @@ class TelemetryPanel(VerticalScroll):
 
 
 class ManualCommandPanel(Vertical):
-    """Bottom-right — composes an `inputs` row and POSTs it.
-
-    No business logic lives here: the Send button hands the dict off to the
-    App, which calls AUVClient.post("inputs", **fields) — the single labelled
-    external call.
-    """
+    """Bottom-right tab — numeric inputs posted as an `inputs` row."""
 
     DEFAULT_CSS = """
     ManualCommandPanel { height: 1fr; }
     ManualCommandPanel .grid {
-        layout: grid; grid-size: 4 3; grid-gutter: 1;
+        layout: grid; grid-size: 3 3; grid-gutter: 1;
         padding: 1; height: auto;
     }
-    ManualCommandPanel .field { layout: vertical; height: 4; }
-    ManualCommandPanel .field Label { color: $text-muted; }
+    ManualCommandPanel .field { layout: vertical; height: 5; }
+    ManualCommandPanel .field Label { color: #8b949e; }
     ManualCommandPanel Input { height: 3; }
+    ManualCommandPanel Input:focus { border: tall #58a6ff; }
     ManualCommandPanel .actions {
         layout: horizontal; padding: 1; height: 5;
     }
     ManualCommandPanel .actions Button { margin-right: 1; }
-    ManualCommandPanel .ack { color: $success; padding: 0 1; height: 1; }
+    ManualCommandPanel .ack { color: #3fb950; padding: 0 1; height: 1; content-align: left middle; }
     """
 
     last_ack: reactive[str] = reactive("")
 
     def compose(self) -> ComposeResult:
-        yield PanelTitle("◆  MANUAL COMMAND  ›  inputs")
+        yield PanelTitle("  MANUAL COMMAND  ›  inputs")
         with Vertical(classes="grid"):
             for name in INPUT_FIELDS:
                 with Vertical(classes="field"):
@@ -422,21 +424,80 @@ class ManualCommandPanel(Vertical):
         self.query_one("#cmd-ack", Static).update(ack)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Footer status bar
-# ─────────────────────────────────────────────────────────────────────────────
-class StatusBar(Static):
-    """Single-line bar above the keybinding footer; shows DB reachability."""
+class PIDTuningPanel(Vertical):
+    """Bottom-right tab — PID gain editor."""
 
     DEFAULT_CSS = """
-    StatusBar { dock: bottom; height: 1; padding: 0 1;
-                background: $boost; color: $text; }
-    StatusBar.online  { background: $success-darken-2; color: $text; }
-    StatusBar.offline { background: $error-darken-2;   color: $text; }
+    PIDTuningPanel { height: 1fr; }
+    PIDTuningPanel .grid {
+        layout: grid; grid-size: 3 2; grid-gutter: 1;
+        padding: 1; height: auto;
+    }
+    PIDTuningPanel .field { layout: vertical; height: 5; }
+    PIDTuningPanel .field Label { color: #8b949e; }
+    PIDTuningPanel Input { height: 3; }
+    PIDTuningPanel Input:focus { border: tall #58a6ff; }
+    PIDTuningPanel .actions {
+        layout: horizontal; padding: 1; height: 5;
+    }
+    PIDTuningPanel .actions Button { margin-right: 1; }
+    PIDTuningPanel .ack { color: #3fb950; padding: 0 1; height: 1; content-align: left middle; }
+    """
+
+    _FIELDS: tuple[tuple[str, str], ...] = (
+        ("ROLL_KP",  "Roll Kp"),
+        ("ROLL_KI",  "Roll Ki"),
+        ("ROLL_KD",  "Roll Kd"),
+        ("PITCH_KP", "Pitch Kp"),
+        ("PITCH_KI", "Pitch Ki"),
+        ("PITCH_KD", "Pitch Kd"),
+    )
+
+    last_ack: reactive[str] = reactive("")
+
+    def compose(self) -> ComposeResult:
+        yield PanelTitle("  PID GAINS  ›  roll / pitch stabilisation")
+        with Vertical(classes="grid"):
+            for key, label in self._FIELDS:
+                with Vertical(classes="field"):
+                    yield Label(label)
+                    yield Input(placeholder="0.0", id=f"pid-{key}",
+                                value="0.0", type="number")
+        with Horizontal(classes="actions"):
+            yield Button("Update", id="pid-update", variant="primary")
+            yield Static("", id="pid-ack", classes="ack")
+
+    def collect(self) -> dict[str, float]:
+        out: dict[str, float] = {}
+        for key, _ in self._FIELDS:
+            raw = self.query_one(f"#pid-{key}", Input).value.strip()
+            try:
+                out[key] = float(raw) if raw else 0.0
+            except ValueError:
+                out[key] = 0.0
+        return out
+
+    def watch_last_ack(self, ack: str) -> None:
+        self.query_one("#pid-ack", Static).update(ack)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Status bar
+# ─────────────────────────────────────────────────────────────────────────────
+class StatusBar(Static):
+    """Single-line bar docked at the bottom showing DB + sim state."""
+
+    DEFAULT_CSS = """
+    StatusBar {
+        dock: bottom; height: 1; padding: 0 1;
+        background: #161b22; color: #8b949e;
+    }
+    StatusBar.online  { color: #3fb950; }
+    StatusBar.offline { color: #f85149; }
     """
 
     db_online: reactive[bool] = reactive(False)
-    last_post: reactive[str] = reactive("")
+    last_post: reactive[str]  = reactive("")
 
     def watch_db_online(self, online: bool) -> None:
         self.set_class(online, "online")
@@ -447,32 +508,40 @@ class StatusBar(Static):
         self._refresh_content()
 
     def _refresh_content(self) -> None:
-        badge = "● DB ONLINE" if self.db_online else "● DB OFFLINE"
-        tail = f"   {self.last_post}" if self.last_post else ""
-        self.update(f"{badge}    AUV CONTROL · v0.1{tail}")
+        db_dot   = DOT_ON if self.db_online else DOT_OFF
+        db_label = "DB ONLINE" if self.db_online else "DB OFFLINE"
+        try:
+            sim = getattr(self.app, "simulation_mode", False)
+        except Exception:
+            sim = False
+        mode = "◈ SIM" if sim else "○ REAL"
+        tail = f"    {self.last_post}" if self.last_post else ""
+        self.update(f"{db_dot} {db_label}    {mode}    AUV CONTROL · v0.1{tail}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Log viewer screen
+# Log viewer modal
 # ─────────────────────────────────────────────────────────────────────────────
 class LogScreen(ModalScreen):
-    """Full-screen modal that tails the AUV log file. Press Escape or L to close."""
+    """Full-screen modal tailing the AUV log file. Esc or L to close."""
 
     BINDINGS = [("escape", "dismiss", "Close"), ("l", "dismiss", "Close")]
 
     DEFAULT_CSS = """
     LogScreen { align: center middle; }
     LogScreen > Vertical {
-        width: 95%; height: 90%;
-        border: round $accent;
-        background: $panel;
+        width: 96%; height: 92%;
+        border: round #58a6ff;
+        background: #161b22;
     }
-    LogScreen #log-content { padding: 0 1; }
+    LogScreen #log-content {
+        padding: 0 1; color: #e6edf3;
+    }
     """
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield PanelTitle("◆  PROCESS LOGS  (Esc to close, auto-refreshes every 2s)")
+            yield PanelTitle("  PROCESS LOGS  ·  Esc to close  ·  auto-refresh 2 s")
             yield VerticalScroll(Static(id="log-content"), id="log-scroll")
 
     def on_mount(self) -> None:
@@ -489,7 +558,7 @@ class LogScreen(ModalScreen):
         if not log_path.is_absolute():
             log_path = _PROJECT_ROOT / log_path
         try:
-            lines = log_path.read_text(encoding="utf-8").splitlines()
+            lines   = log_path.read_text(encoding="utf-8").splitlines()
             content = "\n".join(lines[-300:]) or "(no log entries yet)"
         except FileNotFoundError:
             content = f"(log file not found: {log_path})\nStart some processes first."
@@ -501,31 +570,70 @@ class LogScreen(ModalScreen):
 # App
 # ─────────────────────────────────────────────────────────────────────────────
 class AUVControlApp(App):
-    """Main app — wires panels together, owns the poll worker, owns the
-    external interface instances. All external calls below are tagged
-    `# EXTERNAL:` so they're easy to grep.
-    """
+    """Main app — wires panels, owns poll workers and external interfaces."""
 
     CSS = """
-    Screen { background: $background; }
+    Screen { background: #0d1117; }
+
     #grid {
         layout: grid;
         grid-size: 2 2;
         grid-columns: 1fr 1fr;
         grid-rows: 1fr 1fr;
         grid-gutter: 1;
-        padding: 1;
+        padding: 1 1 0 1;
     }
-    ServicesPanel, ControllersPanel, TelemetryPanel, ManualCommandPanel {
-        border: round $surface-lighten-2;
-        background: $panel;
+
+    ServicesPanel, ControllersPanel, TelemetryPanel {
+        border: round #30363d;
+        background: #161b22;
         padding: 0 1;
     }
-    PanelTitle {
-        color: $accent; text-style: bold;
-        padding: 0 1; height: 1;
+
+    #bottom-right {
+        border: round #30363d;
+        background: #161b22;
+        padding: 0 1;
     }
-    .hint { color: $text-muted; padding: 1; }
+
+    ServicesPanel:focus-within, ControllersPanel:focus-within,
+    TelemetryPanel:focus-within, #bottom-right:focus-within {
+        border: round #58a6ff;
+    }
+
+    PanelTitle {
+        color: #58a6ff;
+        text-style: bold;
+        padding: 0 0 0 0;
+        height: 1;
+    }
+
+    Header {
+        background: #161b22;
+        color: #58a6ff;
+        text-style: bold;
+    }
+
+    Footer {
+        background: #161b22;
+        color: #8b949e;
+    }
+
+    TabbedContent ContentTab {
+        color: #8b949e;
+    }
+
+    TabbedContent ContentTab.-active {
+        color: #58a6ff;
+        border-bottom: tall #58a6ff;
+    }
+
+    Button.-success { background: #1a3a1f; color: #3fb950; border: tall #3fb950; }
+    Button.-error   { background: #3a1a1a; color: #f85149; border: tall #f85149; }
+    Button.-primary { background: #1a2a3a; color: #58a6ff; border: tall #58a6ff; }
+    Button.-default { background: #21262d; color: #e6edf3; border: tall #30363d; }
+
+    .hint { color: #8b949e; padding: 0 0 1 0; }
     """
 
     BINDINGS = [
@@ -535,19 +643,22 @@ class AUVControlApp(App):
         Binding("a", "start_all_services", "Start all"),
         Binding("A", "stop_all_services", "Stop all", show=False),
         Binding("1", "toggle_service('db')", "DB", show=False),
-        Binding("2", "toggle_service('hardware_interface')", "HW",
-                show=False),
+        Binding("2", "toggle_service('hardware_interface')", "HW", show=False),
+        Binding("3", "toggle_service('movement')", "Movement", show=False),
+        Binding("4", "toggle_service('camera')", "Camera", show=False),
+        Binding("5", "toggle_service('ai')", "AI", show=False),
+        Binding("s", "toggle_simulation_mode", "Sim mode"),
         Binding("z", "zero_inputs", "Zero inputs"),
         Binding("ctrl+s", "send_inputs", "Send"),
     ]
 
+    simulation_mode: reactive[bool] = reactive(False)
+
     def __init__(self) -> None:
         super().__init__()
-        # External interface instances — single ownership point.
-        self.pm = ProcessManager()                # EXTERNAL: owned here
-        self.hpm = HardwareProcessManager()       # EXTERNAL: owned here
-        self.client = AUVClient()                 # EXTERNAL: owned here
-        # Telemetry ring buffers, keyed to TelemetryPanel.ALL_KEYS.
+        self.pm     = ProcessManager()          # EXTERNAL: owned here
+        self.hpm    = HardwareProcessManager()  # EXTERNAL: owned here
+        self.client = AUVClient()               # EXTERNAL: owned here
         self._telemetry: dict[str, TelemetrySeries] = {
             key: TelemetrySeries() for key in TelemetryPanel.ALL_KEYS
         }
@@ -559,14 +670,17 @@ class AUVControlApp(App):
             yield ServicesPanel(id="services")
             yield TelemetryPanel(id="telemetry")
             yield ControllersPanel(id="controllers")
-            yield ManualCommandPanel(id="manual")
+            with TabbedContent(id="bottom-right"):
+                with TabPane("Manual Command", id="tab-manual"):
+                    yield ManualCommandPanel(id="manual")
+                with TabPane("PID Gains", id="tab-pid"):
+                    yield PIDTuningPanel(id="pid")
         yield StatusBar(id="status")
         yield Footer()
 
     def on_mount(self) -> None:
-        self.title = "AUV Control"
+        self.title     = "▸ AUV Control"
         self.sub_title = "autonomous underwater vehicle · ground station"
-        # Initial paint + recurring poll.
         self.action_refresh_all()
         self.set_interval(POLL_INTERVAL, self._poll_telemetry)
         self.set_interval(1.0, self._poll_processes)
@@ -574,13 +688,10 @@ class AUVControlApp(App):
     # ── pollers ──────────────────────────────────────────────────────────
     @work(exclusive=True, thread=True, group="telemetry")
     def _poll_telemetry(self) -> None:
-        """Runs every POLL_INTERVAL. Pulls latest() for each table; gracefully
-        degrades to 'DB offline' on any exception.
-        """
         online = True
         for table in TELEMETRY_TABLES:
             try:
-                row = self.client.latest(table)            # EXTERNAL: read
+                row = self.client.latest(table)             # EXTERNAL: read
             except Exception:
                 online = False
                 row = None
@@ -588,15 +699,10 @@ class AUVControlApp(App):
                 continue
             self._ingest_telemetry(table, row)
 
-        # Trigger reactive watchers by re-binding the dict.
         self.query_one(TelemetryPanel).telemetry = dict(self._telemetry)
-        status = self.query_one(StatusBar)
-        status.db_online = online
+        self.query_one(StatusBar).db_online = online
 
     def _ingest_telemetry(self, table: str, row: dict) -> None:
-        """Map raw rows from `latest()` onto our channel ring buffers.
-        Defensive — missing keys just skip; never raises.
-        """
         if table == "imu":
             mapping = {
                 "ax": "ACCEL_X", "ay": "ACCEL_Y", "az": "ACCEL_Z",
@@ -613,7 +719,6 @@ class AUVControlApp(App):
             self._telemetry["psa.t"].push(row.get("B1_TEMP"))
 
     def _poll_processes(self) -> None:
-        """Pull both process-manager statuses on a slower cadence."""
         try:
             svc = self.pm.status()                          # EXTERNAL: read
         except Exception:
@@ -623,20 +728,26 @@ class AUVControlApp(App):
         except Exception:
             ctrl = {n: {"enabled": False, "detected": False,
                         "running": False, "pid": None} for n in CONTROLLERS}
-        self.query_one(ServicesPanel).service_state = svc
+        self.query_one(ServicesPanel).service_state   = svc
         self.query_one(ControllersPanel).controller_state = ctrl
 
     # ── actions ──────────────────────────────────────────────────────────
+    def watch_simulation_mode(self, sim: bool) -> None:
+        label = "SIM" if sim else "REAL"
+        self.notify(f"Mode: {label}", timeout=2)
+        self.query_one(StatusBar)._refresh_content()
+
+    def action_toggle_simulation_mode(self) -> None:
+        self.simulation_mode = not self.simulation_mode
+
     def action_show_logs(self) -> None:
         self.push_screen(LogScreen())
 
     def action_refresh_all(self) -> None:
-        """`r` — force-refresh every panel immediately."""
         self._poll_processes()
         self._poll_telemetry()
 
     def action_quit_safely(self) -> None:
-        """`q` — stop all services then exit."""
         try:
             self.pm.stop_all()                              # EXTERNAL: write
         except Exception:
@@ -666,14 +777,16 @@ class AUVControlApp(App):
     def action_send_inputs(self) -> None:
         self._send_inputs()
 
-    # ── service start/stop ───────────────────────────────────────────────
+    # ── service / controller toggle ──────────────────────────────────────
     def _toggle_controller(self, name: str) -> None:
         info = self.query_one(ControllersPanel).controller_state.get(name, {})
         try:
             if info.get("running"):
-                self.hpm.stop(name)
+                self.hpm.stop(name)                         # EXTERNAL: write
+                self.notify(f"{name} stopped", timeout=2)
             else:
-                self.hpm.start(name)
+                self.hpm.start(name)                        # EXTERNAL: write
+                self.notify(f"{name} starting…", timeout=2)
         except Exception as exc:
             self.notify(f"{name}: {exc}", severity="error")
         self._poll_processes()
@@ -683,8 +796,13 @@ class AUVControlApp(App):
         try:
             if info.get("running"):
                 self.pm.stop(name)                          # EXTERNAL: write
+                self.notify(f"{name} stopped", timeout=2)
+            elif name == "hardware_interface":
+                self.pm.start(name, simulation=self.simulation_mode)  # EXTERNAL: write
+                self.notify(f"{name} starting…", timeout=2)
             else:
                 self.pm.start(name)                         # EXTERNAL: write
+                self.notify(f"{name} starting…", timeout=2)
         except Exception as exc:
             self.notify(f"{name}: {exc}", severity="error")
         self._poll_processes()
@@ -700,17 +818,28 @@ class AUVControlApp(App):
             self._send_inputs()
         elif bid == "cmd-zero":
             self.query_one(ManualCommandPanel).zero()
+        elif bid == "pid-update":
+            self._send_pid_gains()
 
-    # ── manual command send ──────────────────────────────────────────────
+    # ── PID / manual send ────────────────────────────────────────────────
+    def _send_pid_gains(self) -> None:
+        panel  = self.query_one(PIDTuningPanel)
+        fields = panel.collect()
+        try:
+            self.client.post("pid_gains", **fields)         # EXTERNAL: write
+            panel.last_ack = f"updated · {time.strftime('%H:%M:%S')}"
+        except Exception as exc:
+            panel.last_ack = f"error: {exc}"
+            self.notify(f"PID update failed: {exc}", severity="error")
+
     def _send_inputs(self) -> None:
-        panel = self.query_one(ManualCommandPanel)
+        panel  = self.query_one(ManualCommandPanel)
         fields = panel.collect()
         try:
             self.client.post("inputs", **fields)            # EXTERNAL: write
-            panel.last_ack = f"sent · {time.strftime('%H:%M:%S')}"
-            self.query_one(StatusBar).last_post = (
-                f"last cmd → inputs @ {time.strftime('%H:%M:%S')}"
-            )
+            ts = time.strftime("%H:%M:%S")
+            panel.last_ack = f"sent · {ts}"
+            self.query_one(StatusBar).last_post = f"last cmd → inputs @ {ts}"
         except Exception as exc:
             panel.last_ack = f"error: {exc}"
             self.notify(f"send failed: {exc}", severity="error")

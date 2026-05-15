@@ -1,15 +1,14 @@
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field, confloat, conint, constr
+from pydantic import BaseModel, Field
 
 
 # ---- inputs ----
 class InputsCreate(BaseModel):
     TIMESTAMP: Optional[str] = Field(None, description="ISO8601 UTC string")
     SURGE: int; SWAY: int; HEAVE: int; ROLL: int; PITCH: int; YAW: int
-    S1: conint(ge=0, le=1); S2: conint(ge=0, le=1)
+    S1: Annotated[int, Field(ge=0, le=1)]; S2: Annotated[int, Field(ge=0, le=1)]
     S3: int
-    ARM: conint(ge=0, le=1)
 
 class InputsRead(InputsCreate):
     ID: int
@@ -19,26 +18,17 @@ class InputsRead(InputsCreate):
 class OutputsCreate(BaseModel):
     TIMESTAMP: Optional[str] = None
     MOTOR1: int; MOTOR2: int; MOTOR3: int; MOTOR4: int
-    VERTICAL_THRUST: int
+    MOTOR5: int; MOTOR6: int; MOTOR7: int; MOTOR8: int
     S1: int; S2: int; S3: int
 
 class OutputsRead(OutputsCreate):
     ID: int
     TIMESTAMP: str
 
-# ---- hydrophone ----
-class HydrophoneCreate(BaseModel):
-    TIMESTAMP: Optional[str] = None
-    HEADING: constr(strip_whitespace=True, min_length=1, max_length=5)
-
-class HydrophoneRead(HydrophoneCreate):
-    ID: int
-    TIMESTAMP: str
-
 # ---- depth ----
 class DepthCreate(BaseModel):
     TIMESTAMP: Optional[str] = None
-    DEPTH: confloat(strict=True)
+    DEPTH: float
 
 class DepthRead(DepthCreate):
     ID: int
@@ -63,6 +53,32 @@ class PowerSafetyCreate(BaseModel):
     B1_TEMP: int;    B2_TEMP: int;    B3_TEMP: int
 
 class PowerSafetyRead(PowerSafetyCreate):
+    ID: int
+    TIMESTAMP: str
+
+# ---- pid_gains ----
+class PidGainsCreate(BaseModel):
+    TIMESTAMP: Optional[str] = None
+    ROLL_KP: float;  ROLL_KI: float;  ROLL_KD: float
+    PITCH_KP: float; PITCH_KI: float; PITCH_KD: float
+
+class PidGainsRead(PidGainsCreate):
+    ID: int
+    TIMESTAMP: str
+
+# ---- detections ----
+class DetectionsCreate(BaseModel):
+    TIMESTAMP: Optional[str] = None
+    CAMERA: str
+    CLASS_NAME: str
+    CONFIDENCE: float
+    BBOX_X: float
+    BBOX_Y: float
+    BBOX_W: float
+    BBOX_H: float
+    DISTANCE: float  # metres; -1.0 if unavailable
+
+class DetectionsRead(DetectionsCreate):
     ID: int
     TIMESTAMP: str
 

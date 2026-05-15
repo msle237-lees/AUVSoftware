@@ -57,7 +57,10 @@ dependencies = [
     "typing-extensions==4.15.0",
     "textual==8.2.5",
     "uvicorn==0.35.0",
-    "plotext>=5.2"
+    "plotext>=5.2",
+    "opencv-python-headless>=4.8",
+    "ultralytics>=8.0",
+    "holoocean @ file:./src/auvsoftware/simulation/HoloOcean/client"
 ]
 
 [project.optional-dependencies]

@@ -1,3 +1,3 @@
-[submodule "src/auvsoftware/simulation/HoloOcean"]
-	path = src/auvsoftware/simulation/HoloOcean
+[submodule "src/auvsoftware/hardware_interface/HoloOcean"]
+	path = src/auvsoftware/hardware_interface/HoloOcean
 	url = https://github.com/msle237-lees/HoloOcean.git

@@ -1,14 +1,13 @@
+import functools
 import multiprocessing
-import time
 from pathlib import Path
 
 from auvsoftware.config import get_env
 
 _DB_DIR = Path(__file__).parent / "db_manager"
-_RECONCILE_INTERVAL: float = 5.0
 
 # Extend this list as high-level packages are implemented.
-_SERVICES: list[str] = ["db", "hardware_interface"]
+_SERVICES: list[str] = ["db", "hardware_interface", "movement", "camera", "ai"]
 
 
 def _run_db() -> None:
@@ -44,30 +43,44 @@ def _run_db() -> None:
         raise
 
 
-def _run_hardware_interface() -> None:
-    """Start the hardware interface reconcile loop."""
-    import logging
-
-    from auvsoftware.hardware_interface.process_manager import (
-        HardwareProcessManager,
-    )
+def _run_hardware_interface(simulation: bool = False) -> None:
+    """Start the hardware interface (real or simulated)."""
     from auvsoftware.logging_config import setup_logging
-
     setup_logging("hardware_interface")
-    log = logging.getLogger(__name__)
+    from auvsoftware.hardware_interface.hardware_interface import run
+    run(simulation=simulation)
 
-    pm = HardwareProcessManager()
-    while True:
-        try:
-            pm.reconcile()
-        except Exception as exc:
-            log.error("reconcile failed: %r", exc)
-        time.sleep(_RECONCILE_INTERVAL)
+
+def _run_movement() -> None:
+    """Start the movement controller."""
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("movement")
+    from auvsoftware.movement_package.movement import run
+    run()
+
+
+def _run_camera() -> None:
+    """Start the camera package (streaming server + detection)."""
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("camera")
+    from auvsoftware.camera_package.camera_manager import run
+    run()
+
+
+def _run_ai() -> None:
+    """Start the AI runner (real-world policy execution by default)."""
+    from auvsoftware.logging_config import setup_logging
+    setup_logging("ai")
+    from auvsoftware.ai_package.runner import run
+    run()
 
 
 _TARGETS: dict[str, object] = {
     "db": _run_db,
     "hardware_interface": _run_hardware_interface,
+    "movement": _run_movement,
+    "camera": _run_camera,
+    "ai": _run_ai,
 }
 
 
@@ -91,8 +104,11 @@ class ProcessManager:
         for name in list(self._processes):
             self.stop(name)
 
-    def start(self, name: str) -> None:
-        """Start a service by name. No-op if already running."""
+    def start(self, name: str, *, simulation: bool = False) -> None:
+        """Start a service by name. No-op if already running.
+
+        The ``simulation`` flag is forwarded to ``hardware_interface`` only.
+        """
         if name not in _TARGETS:
             raise ValueError(
                 f"Unknown service: '{name}'. Valid: {_SERVICES}"
@@ -100,11 +116,14 @@ class ProcessManager:
         if self._is_alive(name):
             return
         if self.dry_run:
-            print(f"[dry_run] start: {name}")
+            sim_tag = " [sim]" if simulation and name == "hardware_interface" else ""
+            print(f"[dry_run] start: {name}{sim_tag}")
             return
-        p = multiprocessing.Process(
-            target=_TARGETS[name], name=name, daemon=True
-        )
+        if name == "hardware_interface":
+            target = functools.partial(_run_hardware_interface, simulation=simulation)
+        else:
+            target = _TARGETS[name]
+        p = multiprocessing.Process(target=target, name=name, daemon=True)
         p.start()
         self._processes[name] = p
 

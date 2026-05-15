@@ -65,8 +65,7 @@ class DatabaseManager:
                     YAW INTEGER NOT NULL,
                     S1 BOOLEAN NOT NULL,
                     S2 BOOLEAN NOT NULL,
-                    S3 INTEGER NOT NULL,
-                    ARM BOOLEAN NOT NULL
+                    S3 INTEGER NOT NULL
                 );
             """,
             # Outputs Table
@@ -78,18 +77,13 @@ class DatabaseManager:
                     MOTOR2 INTEGER NOT NULL,
                     MOTOR3 INTEGER NOT NULL,
                     MOTOR4 INTEGER NOT NULL,
-                    VERTICAL_THRUST INTEGER NOT NULL,
+                    MOTOR5 INTEGER NOT NULL,
+                    MOTOR6 INTEGER NOT NULL,
+                    MOTOR7 INTEGER NOT NULL,
+                    MOTOR8 INTEGER NOT NULL,
                     S1 INTEGER NOT NULL,
                     S2 INTEGER NOT NULL,
                     S3 INTEGER NOT NULL
-                );
-            """,
-            # Hydrophone Table
-            """
-                CREATE TABLE IF NOT EXISTS hydrophone (
-                    ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                    TIMESTAMP TEXT NOT NULL,
-                    HEADING STRING(5) NOT NULL
                 );
             """,
             # Depth Table
@@ -116,6 +110,19 @@ class DatabaseManager:
                     MAG_Z REAL NOT NULL
                 );
             """,
+            # PID Gains Table
+            """
+                CREATE TABLE IF NOT EXISTS pid_gains (
+                    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TIMESTAMP TEXT NOT NULL,
+                    ROLL_KP REAL NOT NULL,
+                    ROLL_KI REAL NOT NULL,
+                    ROLL_KD REAL NOT NULL,
+                    PITCH_KP REAL NOT NULL,
+                    PITCH_KI REAL NOT NULL,
+                    PITCH_KD REAL NOT NULL
+                );
+            """,
             # Power Safety Table
             """
                 CREATE TABLE IF NOT EXISTS power_safety (
@@ -130,6 +137,21 @@ class DatabaseManager:
                     B1_TEMP INTEGER NOT NULL,
                     B2_TEMP INTEGER NOT NULL,
                     B3_TEMP INTEGER NOT NULL
+                );
+            """,
+            # Detections Table
+            """
+                CREATE TABLE IF NOT EXISTS detections (
+                    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TIMESTAMP TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                    CAMERA TEXT NOT NULL,
+                    CLASS_NAME TEXT NOT NULL,
+                    CONFIDENCE REAL NOT NULL,
+                    BBOX_X REAL NOT NULL,
+                    BBOX_Y REAL NOT NULL,
+                    BBOX_W REAL NOT NULL,
+                    BBOX_H REAL NOT NULL,
+                    DISTANCE REAL NOT NULL
                 );
             """
         ]

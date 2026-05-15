@@ -12,7 +12,7 @@ Usage
 
     # POST  ──────────────────────────────────────────
     client.post("inputs",  SURGE=0, SWAY=0, HEAVE=0, ROLL=0, PITCH=0, YAW=0,
-                           S1=0, S2=0, S3=0, ARM=0)
+                           S1=0, S2=0, S3=0)
     client.post("depth",   DEPTH=1.23)
     client.post("imu",     ACCEL_X=0.1, ACCEL_Y=0.2, ACCEL_Z=9.8,
                            GYRO_X=0.0, GYRO_Y=0.0, GYRO_Z=0.0,
@@ -47,7 +47,7 @@ class AUVRequestError(RuntimeError):
 class AUVClient:
     # All tables exposed by the DB API
     TABLES = frozenset(
-        ["inputs", "outputs", "hydrophone", "depth", "imu", "power_safety"]
+        ["inputs", "outputs", "depth", "imu", "power_safety", "pid_gains", "detections"]
     )
 
     def __init__(

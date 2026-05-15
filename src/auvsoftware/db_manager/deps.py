@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     App startup/shutdown: create the DB connection, ensure tables exist,
     enable foreign keys, and make rows accessible by column name.
     """
-    db_path = get_env("AUV_DB_PATH", default="auv_database.db", required=True)
+    db_path = get_env("AUV_DB_PATH", default="auv_database.db")
     dbm = DatabaseManager(db_path)
     await dbm.connect()
 
@@ -35,8 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             YAW INTEGER NOT NULL,
             S1 BOOLEAN NOT NULL,
             S2 BOOLEAN NOT NULL,
-            S3 INTEGER NOT NULL,
-            ARM BOOLEAN NOT NULL
+            S3 INTEGER NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS outputs (
@@ -46,7 +45,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             MOTOR2 INTEGER NOT NULL,
             MOTOR3 INTEGER NOT NULL,
             MOTOR4 INTEGER NOT NULL,
-            VERTICAL_THRUST INTEGER NOT NULL,
+            MOTOR5 INTEGER NOT NULL,
+            MOTOR6 INTEGER NOT NULL,
+            MOTOR7 INTEGER NOT NULL,
+            MOTOR8 INTEGER NOT NULL,
             S1 INTEGER NOT NULL,
             S2 INTEGER NOT NULL,
             S3 INTEGER NOT NULL
@@ -78,6 +80,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             MAG_Z REAL NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS pid_gains (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            TIMESTAMP TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            ROLL_KP REAL NOT NULL,
+            ROLL_KI REAL NOT NULL,
+            ROLL_KD REAL NOT NULL,
+            PITCH_KP REAL NOT NULL,
+            PITCH_KI REAL NOT NULL,
+            PITCH_KD REAL NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS power_safety (
             ID INTEGER PRIMARY KEY AUTOINCREMENT,
             TIMESTAMP TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -90,6 +103,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             B1_TEMP INTEGER NOT NULL,
             B2_TEMP INTEGER NOT NULL,
             B3_TEMP INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS detections (
+            ID INTEGER PRIMARY KEY AUTOINCREMENT,
+            TIMESTAMP TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            CAMERA TEXT NOT NULL,
+            CLASS_NAME TEXT NOT NULL,
+            CONFIDENCE REAL NOT NULL,
+            BBOX_X REAL NOT NULL,
+            BBOX_Y REAL NOT NULL,
+            BBOX_W REAL NOT NULL,
+            BBOX_H REAL NOT NULL,
+            DISTANCE REAL NOT NULL
         );
         """
     )

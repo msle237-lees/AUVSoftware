@@ -18,9 +18,13 @@ def _clamp(value: int) -> int:
     return max(_MIN, min(_MAX, value))
 
 
-def set_thrust(motor1: int, motor2: int, motor3: int, motor4: int, vertical: int) -> None:
-    """Send thrust values (0-255) to all motors via Pico over I2C."""
-    thrusts = [_clamp(v) for v in (motor1, motor2, motor3, motor4, vertical)]
+def set_thrust(
+    motor1: int, motor2: int, motor3: int, motor4: int,
+    motor5: int, motor6: int, motor7: int, motor8: int,
+) -> None:
+    """Send thrust values (0-255) for all 8 motors via Pico over I2C."""
+    motors = (motor1, motor2, motor3, motor4, motor5, motor6, motor7, motor8)
+    thrusts = [_clamp(v) for v in motors]
     payload = bytes([_REGISTER] + thrusts)
     write(_BUS, _ADDRESS, payload)
 
@@ -41,7 +45,10 @@ class ESCController:
             data.get("MOTOR2", _NEUTRAL),
             data.get("MOTOR3", _NEUTRAL),
             data.get("MOTOR4", _NEUTRAL),
-            data.get("VERTICAL_THRUST", _NEUTRAL),
+            data.get("MOTOR5", _NEUTRAL),
+            data.get("MOTOR6", _NEUTRAL),
+            data.get("MOTOR7", _NEUTRAL),
+            data.get("MOTOR8", _NEUTRAL),
         )
 
     def run(self) -> None:
@@ -61,7 +68,10 @@ def _test() -> None:
         f"address {_ADDRESS:#04x}..."
     )
     try:
-        set_thrust(_NEUTRAL, _NEUTRAL, _NEUTRAL, _NEUTRAL, _NEUTRAL)
+        set_thrust(
+            _NEUTRAL, _NEUTRAL, _NEUTRAL, _NEUTRAL,
+            _NEUTRAL, _NEUTRAL, _NEUTRAL, _NEUTRAL,
+        )
         print("OK — payload delivered successfully.")
     except OSError as e:
         print(f"I2C error: {e}")

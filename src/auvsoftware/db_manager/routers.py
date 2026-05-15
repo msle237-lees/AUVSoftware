@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 import aiosqlite
@@ -15,12 +16,13 @@ async def _insert_and_fetch(
     db: aiosqlite.Connection, table: str, cols: Sequence[str], values: Sequence
 ) -> dict:
     placeholders = ",".join(["?"] * len(cols))
-    await db.execute(
+    cur = await db.execute(
         f"INSERT INTO {table} ({','.join(cols)}) VALUES ({placeholders});",
         values,
     )
+    row_id = cur.lastrowid
     await db.commit()
-    cur = await db.execute(f"SELECT * FROM {table} ORDER BY ID DESC LIMIT 1;")
+    cur = await db.execute(f"SELECT * FROM {table} WHERE ID = ?;", (row_id,))
     row = await cur.fetchone()
     await cur.close()
     return dict(row)
@@ -74,11 +76,11 @@ async def _list_by_time(
 async def create_inputs(
     SURGE: int = Form(...), SWAY: int = Form(...), HEAVE: int = Form(...),
     ROLL: int = Form(...), PITCH: int = Form(...), YAW: int = Form(...),
-    S1: int = Form(...), S2: int = Form(...), S3: int = Form(...), ARM: int = Form(...),
+    S1: int = Form(...), S2: int = Form(...), S3: int = Form(...),
     db: aiosqlite.Connection = Depends(get_db),
 ):
-    cols = ["SURGE", "SWAY", "HEAVE", "ROLL", "PITCH", "YAW", "S1", "S2", "S3", "ARM"]
-    vals = [SURGE, SWAY, HEAVE, ROLL, PITCH, YAW, S1, S2, S3, ARM]
+    cols = ["SURGE", "SWAY", "HEAVE", "ROLL", "PITCH", "YAW", "S1", "S2", "S3"]
+    vals = [SURGE, SWAY, HEAVE, ROLL, PITCH, YAW, S1, S2, S3]
     return await _insert_and_fetch(db, "inputs", cols, vals)
 
 @router.get("/inputs", tags=["inputs"])
@@ -118,12 +120,12 @@ async def delete_inputs(id: int, db: aiosqlite.Connection = Depends(get_db)):
 @router.post("/outputs", tags=["outputs"])
 async def create_outputs(
     MOTOR1: int = Form(...), MOTOR2: int = Form(...), MOTOR3: int = Form(...), MOTOR4: int = Form(...),
-    VERTICAL_THRUST: int = Form(...),
+    MOTOR5: int = Form(...), MOTOR6: int = Form(...), MOTOR7: int = Form(...), MOTOR8: int = Form(...),
     S1: int = Form(...), S2: int = Form(...), S3: int = Form(...),
     db: aiosqlite.Connection = Depends(get_db),
 ):
-    cols = ["MOTOR1", "MOTOR2", "MOTOR3", "MOTOR4", "VERTICAL_THRUST", "S1", "S2", "S3"]
-    vals = [MOTOR1, MOTOR2, MOTOR3, MOTOR4, VERTICAL_THRUST, S1, S2, S3]
+    cols = ["MOTOR1", "MOTOR2", "MOTOR3", "MOTOR4", "MOTOR5", "MOTOR6", "MOTOR7", "MOTOR8", "S1", "S2", "S3"]
+    vals = [MOTOR1, MOTOR2, MOTOR3, MOTOR4, MOTOR5, MOTOR6, MOTOR7, MOTOR8, S1, S2, S3]
     return await _insert_and_fetch(db, "outputs", cols, vals)
 
 @router.get("/outputs", tags=["outputs"])
@@ -158,46 +160,33 @@ async def delete_outputs(id: int, db: aiosqlite.Connection = Depends(get_db)):
 
 
 # ----------------------------------------------------------------------
-# hydrophone
+# pid_gains
 # ----------------------------------------------------------------------
-@router.post("/hydrophone", tags=["hydrophone"])
-async def create_hydrophone(
-    HEADING: str = Form(...),
+@router.post("/pid_gains", tags=["pid_gains"])
+async def create_pid_gains(
+    ROLL_KP:  float = Form(...), ROLL_KI:  float = Form(...), ROLL_KD:  float = Form(...),
+    PITCH_KP: float = Form(...), PITCH_KI: float = Form(...), PITCH_KD: float = Form(...),
     db: aiosqlite.Connection = Depends(get_db),
 ):
-    cols = ["HEADING"]
-    vals = [HEADING]
-    return await _insert_and_fetch(db, "hydrophone", cols, vals)
+    cols = ["ROLL_KP", "ROLL_KI", "ROLL_KD", "PITCH_KP", "PITCH_KI", "PITCH_KD"]
+    vals = [ROLL_KP, ROLL_KI, ROLL_KD, PITCH_KP, PITCH_KI, PITCH_KD]
+    return await _insert_and_fetch(db, "pid_gains", cols, vals)
 
-@router.get("/hydrophone", tags=["hydrophone"])
-async def list_hydrophone(
-    limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-    db: aiosqlite.Connection = Depends(get_db),
-):
-    rows, total = await _list_by_time(db, "hydrophone", "TIMESTAMP", limit, offset, start, end)
-    return {"items": rows, "total": total, "limit": limit, "offset": offset}
-
-@router.get("/hydrophone/latest", tags=["hydrophone"])
-async def latest_hydrophone(db: aiosqlite.Connection = Depends(get_db)):
-    cur = await db.execute("SELECT * FROM hydrophone ORDER BY TIMESTAMP DESC LIMIT 1;")
+@router.get("/pid_gains/latest", tags=["pid_gains"])
+async def latest_pid_gains(db: aiosqlite.Connection = Depends(get_db)):
+    cur = await db.execute(
+        "SELECT * FROM pid_gains ORDER BY TIMESTAMP DESC LIMIT 1;"
+    )
     row = await cur.fetchone()
     await cur.close()
     return dict(row) if row else None
 
-@router.get("/hydrophone/{id}", tags=["hydrophone"])
-async def get_hydrophone(id: int, db: aiosqlite.Connection = Depends(get_db)):
-    row = await _get_by_id(db, "hydrophone", id)
+@router.get("/pid_gains/{id}", tags=["pid_gains"])
+async def get_pid_gains(id: int, db: aiosqlite.Connection = Depends(get_db)):
+    row = await _get_by_id(db, "pid_gains", id)
     if not row:
-        raise HTTPException(404, "hydrophone not found")
+        raise HTTPException(404, "pid_gains not found")
     return row
-
-@router.delete("/hydrophone/{id}", status_code=204, tags=["hydrophone"])
-async def delete_hydrophone(id: int, db: aiosqlite.Connection = Depends(get_db)):
-    if await _delete_by_id(db, "hydrophone", id) == 0:
-        raise HTTPException(404, "hydrophone not found")
 
 
 # ----------------------------------------------------------------------
@@ -339,3 +328,54 @@ async def get_power_safety(id: int, db: aiosqlite.Connection = Depends(get_db)):
 async def delete_power_safety(id: int, db: aiosqlite.Connection = Depends(get_db)):
     if await _delete_by_id(db, "power_safety", id) == 0:
         raise HTTPException(404, "power_safety not found")
+
+
+# ----------------------------------------------------------------------
+# detections
+# ----------------------------------------------------------------------
+@router.post("/detections", tags=["detections"])
+async def create_detections(
+    CAMERA: str = Form(...),
+    CLASS_NAME: str = Form(...),
+    CONFIDENCE: float = Form(...),
+    BBOX_X: float = Form(...),
+    BBOX_Y: float = Form(...),
+    BBOX_W: float = Form(...),
+    BBOX_H: float = Form(...),
+    DISTANCE: float = Form(...),
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cols = ["TIMESTAMP", "CAMERA", "CLASS_NAME", "CONFIDENCE", "BBOX_X", "BBOX_Y", "BBOX_W", "BBOX_H", "DISTANCE"]
+    vals = [ts, CAMERA, CLASS_NAME, CONFIDENCE, BBOX_X, BBOX_Y, BBOX_W, BBOX_H, DISTANCE]
+    return await _insert_and_fetch(db, "detections", cols, vals)
+
+@router.get("/detections", tags=["detections"])
+async def list_detections(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    rows, total = await _list_by_time(db, "detections", "TIMESTAMP", limit, offset, start, end)
+    return {"items": rows, "total": total, "limit": limit, "offset": offset}
+
+@router.get("/detections/latest", tags=["detections"])
+async def latest_detections(db: aiosqlite.Connection = Depends(get_db)):
+    cur = await db.execute("SELECT * FROM detections ORDER BY TIMESTAMP DESC LIMIT 1;")
+    row = await cur.fetchone()
+    await cur.close()
+    return dict(row) if row else None
+
+@router.get("/detections/{id}", tags=["detections"])
+async def get_detections(id: int, db: aiosqlite.Connection = Depends(get_db)):
+    row = await _get_by_id(db, "detections", id)
+    if not row:
+        raise HTTPException(404, "detections not found")
+    return row
+
+@router.delete("/detections/{id}", status_code=204, tags=["detections"])
+async def delete_detections(id: int, db: aiosqlite.Connection = Depends(get_db)):
+    if await _delete_by_id(db, "detections", id) == 0:
+        raise HTTPException(404, "detections not found")
